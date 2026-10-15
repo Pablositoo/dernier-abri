@@ -83,6 +83,7 @@ node tests/bench.mjs --parties 500 --langue en --lectures bench_resultats/lectur
 python3 -m analyse.calibration              # métriques, analyse/fiabilite_jev.png, web/js/analysis/calibration_jev.js
 node tests/bench.mjs --politique v5 --calibration-cv bench_resultats/calibration_cv.json     # v5 HORS échantillon
 python3 -m server.derive --dry-run          # puis sans --dry-run : 12 canaris = 2 appels réels ; sortie 1 si dérive
+python3 -m analyse.bruit_jev --dry-run      # étude du bruit (≈ 80 appels) ; --analyser = relire sans appel
 ```
 Cache JEV : `cache_jev.json` (ignoré par git), clé = sha256(modèle + state + question), identique en Python (`server/cache_jev.py`) et en JS (`tests/bench_lib.mjs`). Les questions ne contiennent ni id ni distance, et `state` = {langue, contexte} : même fiche ⇒ même question ⇒ 80 questions possibles en tout.
 
@@ -112,7 +113,8 @@ Comparaison appariée v4 − v3 sur 2 000 graines : morsures −0,13 ± 0,08 (EN
 - JEV brut est **sous-confiant** (ECE 0,078). Isotonique : meilleures métriques (ECE CV 0,016) mais en escalier → hors échantillon, le zombie blessé EN (p = 0,835) n'est plus confirmé : **4,23 morsures/partie** au benchmark. Platt : ECE CV 0,040.
 - Règle de choix (`analyse.calibration.choisir`) : meilleure log-loss CV parmi les calibrateurs qui gardent une marge ≥ JEV brut ET ne ralentissent la confirmation d'aucune fiche zombie (2e critère ajouté après le benchmark hors échantillon de l'isotonique).
 - Résultat v5 (Platt) : parties **identiques** à v4 (en/hors échantillon, stress 50 %), marge pire cas **0,22 → 0,78** (CV). Leçon : une meilleure calibration n'est pas une meilleure décision.
-- **Dérive** : passive (modèle servi ≠ demandé ⇒ alerte, jamais en cache, v5 repasse en brut + bandeau) ; active (`server.derive`, canaris appariés, |Δp| ≤ 0,10, décalage moyen ≤ 0,05). 1er contrôle réel (15/10/2026) : pas de dérive, mais |Δp| max = 0,10 → **JEV n'est pas déterministe** ; le cache fige UN tirage. Un humain blessé EN à p = 0,705 devient dangereux en brut dès p > 0,748 (+0,043), en v5 dès p > 0,807 (+0,10). Étude du bruit à faire (répétitions).
+- **Dérive** : passive (modèle servi ≠ demandé ⇒ alerte, jamais en cache, v5 repasse en brut + bandeau) ; active (`server.derive`, 12 canaris appariés, |Δp| ≤ 0,15, décalage moyen ≤ 0,05).
+- **Bruit de JEV** (`python3 -m analyse.bruit_jev`, 80 appels, 68 000 tokens ≈ 0,003 €) : JEV n'est pas parfaitement déterministe, mais le bruit est faible — écart-type par question 0,010 en moyenne (0,038 max), écart-type de pZ ≤ 0,018 ; mêmes lots ou lots mélangés : pareil (pas d'effet de contexte). Fiche critique EN blesse_humain_1_d : p ∈ [0,660 ; 0,705], la valeur en cache est le pire tirage → marge sur le pire tirage observé : brut 0,22, v5 0,81 ; aucun zombie ralenti. Seuils de dérive recalés sur ces mesures.
 
 Sécurité prouvée par le pire cas (`tests/js/v3.test.mjs`, `v5.test.mjs`) : aucune fiche humaine réelle n'atteint le seuil de tir, même si l'humain désobéit 2 fois. Marge minimale 0,22 (EN, humain blessé désobéissant, JEV p = 0,705) : à surveiller si JEV change de version.
 **Critères d'acceptation** (benchmark, 500 parties) : humains abattus = 0 ; morsures moyennes en baisse par rapport à la base v2.2 ; aucune régression de latence.

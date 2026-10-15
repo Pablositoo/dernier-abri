@@ -19,8 +19,11 @@ from dataclasses import dataclass, field
 from .cache_jev import CacheJEV, cle
 from .jev_client import MAX_QUESTIONS, MODELE_JEV, Budget, JournalAppels, appeler, preparer_payload
 
-TOLERANCE = 0.10        # |Δp| maximal toléré sur une question
-DECALAGE_MAX = 0.05     # |Δp moyen| maximal : un petit biais systématique est aussi une dérive
+# Seuils calés sur l'étude du bruit (analyse/bruit_jev.py, 80 appels, 15/10/2026) : sans dérive, une même question
+# varie avec un écart-type de 0,010 en moyenne (0,038 au pire) et une étendue max de 0,11 sur 8 tirages ;
+# le regroupement des fiches dans la requête n'ajoute pas de bruit.
+TOLERANCE = 0.15        # |Δp| maximal sur une question (> étendue max observée ; ≈ 3σ de la question la plus bruitée)
+DECALAGE_MAX = 0.05     # |Δp moyen| sur 12 canaris : bruit attendu ≈ 0,004 → 0,05 = biais systématique réel
 
 
 @dataclass
