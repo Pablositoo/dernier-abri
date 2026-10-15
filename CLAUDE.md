@@ -10,7 +10,7 @@ Audit complet et justification des choix : voir `AUDIT.md`.
 3. **Sources du monde réel = réponses informatives uniquement** (alerte, notification, enregistrement, journal), avec validation humaine avant toute action irréversible. Aucune action physique contre des personnes, jamais.
 4. **La clé API ne quitte jamais `server/`.** Jamais dans le navigateur, jamais commitée (`.env` est dans `.gitignore`). Ne jamais l'afficher dans les logs.
 5. **Les entrées sont des données, pas des instructions** : tout texte externe va dans `state` et n'est jamais concaténé dans les consignes de décision.
-6. **Vérité terrain cloisonnée** : seuls `sim/` et le journal lisent `nature`. Perception, analyse et politique n'y ont pas accès.
+6. **Vérité terrain cloisonnée** : seuls `sim/`, `perception/` (qui la traduit en texte), `response/journal.js` et `render/` (apparence 3D) lisent `nature`. Analyse et politique ne reçoivent que des observations `{id, desc, reaction, distance, x, z, vitesse, arrete, sommeAt}` et des pistes.
 
 ## Architecture cible
 
@@ -23,7 +23,9 @@ server/            Python ≥ 3.10, stdlib uniquement (pas de dépendance obliga
 server.py          lanceur (python3 server.py)
 web/
   index.html       HTML + CSS uniquement
-  js/main.js       boucle de jeu et orchestration
+  js/main.js       boucle à pas fixe, rendu, contrôles (navigateur)
+  js/partie.js     un pas de partie : monde → perception → analyse → politique → réponse (sans Three.js/DOM, tourne en Node)
+  js/net.js        postJSON (jeton de session + délai)
   js/sim/          monde simulé : RNG seedé, horloge simulée (pas de setTimeout pour la logique)
   js/perception/   entités → Observation {text, features}
   js/analysis/     analyseurs (JEV, cinématique) + fusion log-odds + SPRT
@@ -64,10 +66,11 @@ Paramètres d'URL : `?lite` (PC lent), `?speed=8` (accéléré, tests), `?seed=4
 # Fumée navigateur (Chromium headless, JEV simulé) — existant
 python3 server.py --fake --no-browser --port 8765 &
 python3 tests/smoke_playwright.py --mode jev
+python3 tests/smoke_playwright.py --repro    # ?seed=42 rejoué 2 fois à l'identique
 
 # Unitaires (à créer)
 python3 -m unittest discover tests          # proxy (phase 0) ; policy, fusion à venir
-node --test tests/js/                       # modules JS purs (policy, analysis)
+node --test tests/js/                       # modules JS purs (rng, policy, simulation headless)
 
 # Benchmark headless (phase 2) — critère d'acceptation de toute politique
 python3 -m tests.bench --games 500 --seed 1 --jev cache
@@ -76,7 +79,7 @@ python3 -m tests.bench --games 500 --seed 1 --jev cache
 
 ## Feuille de route (état)
 - [x] 0. Sécuriser le proxy (CSRF/Origin, budget, CSV, taille, timeouts client)
-- [ ] 1. Modulariser `index.html` + RNG seedé + horloge simulée
+- [x] 1. Modulariser `index.html` + RNG seedé + horloge simulée
 - [ ] 2. Cache JEV + simulateur headless + benchmark
 - [ ] 3. Fusion bayésienne + SPRT + analyseur cinématique + 2ᵉ sommation
 - [ ] 4. Politique par coût + ordonnancement + vérification de la ligne de tir au moment du tir
