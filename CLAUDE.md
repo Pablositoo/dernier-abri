@@ -150,6 +150,6 @@ Sécurité prouvée par le pire cas (`tests/js/v3.test.mjs`, `v5.test.mjs`) : au
 - [x] 5. Calibration (fiabilité, isotonique, dérive)
 - [x] 6. Noyau générique `vigie/` + `GameSource` (WebSocket)
 - [x] 7a. Connecteurs réels : journaux (fichier, macOS), métriques réseau, alertes (journal, preuves, notification, webhook)
-- [→] 7b. Caméra et drones : **autre projet** (copier `vigie/` ; webhook : recopier `VIGIE_WEBHOOK_URL` dans son `.env`, de préférence une URL régénérée). Réponses informatives uniquement ; neutraliser un drone est réservé à l'État.
+- [→] 7b. Suite dans d'autres projets : drones → `ciel-garde-drones` (simulation, aucun matériel réel) · caméra → `home-guard` (RTSP + YOLO + alertes ; y recopier `VIGIE_WEBHOOK_URL`, de préférence régénérée). Base réutilisable : `vigie/`.
 
 **Ne pas démarrer une phase sans validation explicite de Pablo.**
