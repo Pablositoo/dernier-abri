@@ -1,10 +1,11 @@
 // Perception : entités du monde → observations. La nature réelle n'en sort jamais
 // (l'analyse et la politique ne voient que ce qu'un capteur verrait).
 import { PORTEE, MAX_CIBLES } from "../config.js";
-import { DESC_I18N, REACTION_I18N } from "./descriptions.js";
+import { DESC_I18N, REACTION_DESOBEIT_I18N, REACTION_I18N } from "./descriptions.js";
 
 export const decrire = (e, langue) => DESC_I18N[langue][e.nature][e.descIdx];
-export const reactionTexte = (e, langue) => e.reagi ? REACTION_I18N[langue][e.nature] : null;
+export const reactionTexte = (e, langue) =>
+  !e.reagi ? null : (e.desobeit ? REACTION_DESOBEIT_I18N : REACTION_I18N)[langue][e.nature];
 
 export function observer(e, langue) {
   return { id: e.id, desc: decrire(e, langue), reaction: reactionTexte(e, langue), distance: e.distance,

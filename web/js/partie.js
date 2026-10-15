@@ -3,14 +3,19 @@
 import { creerRng } from "./sim/rng.js";
 import { Monde } from "./sim/monde.js";
 import { observerTous, visibles } from "./perception/observer.js";
+import { POLITIQUE_DEFAUT } from "./config.js";
 import { nouvellePiste, majStatuts, doitSommer, choisirCible } from "./policy/regles.js";
+import { suivreCinematique } from "./analysis/cinematique.js";
+import { fusionner } from "./analysis/fusion.js";
+import { aResommer, eligiblesV3, statutSPRT } from "./policy/sprt.js";
 import { botNaif } from "./policy/bot.js";
 import { pointVise, orienter, relacher } from "./response/visee.js";
 
 export const AUTEURS = { jev: "JEV v2", jev1: "JEV v1", regle: "BOT", manuel: "TOI" };
 
-export function creerPartie(mode, graine, seuil) {
-  return { mode, graine, seuil, monde: new Monde(creerRng(graine)), pistes: new Map(), cibleId: null,
+// monde : options du monde simulé (ex. { desobeissance: 0 } pour le monde v2.2)
+export function creerPartie(mode, graine, seuil, { politique = POLITIQUE_DEFAUT, monde = {} } = {}) {
+  return { mode, graine, seuil, politique, monde: new Monde(creerRng(graine), monde), pistes: new Map(), cibleId: null,
            tourelle: { yaw: 0, pitch: 0 } };
 }
 
@@ -33,7 +38,26 @@ function protocole(p, tous, vis, analyseur, langue) {
   const aAnalyser = vis.filter(c => p.pistes.get(c.id).besoinAnalyse);
   if (aAnalyser.length && !analyseur.occupe) analyseur.classer(aAnalyser, p.pistes, langue);
   if (doitSommer(m.t, m.derniereSommation, tous, p.pistes)) m.sommer();
-  const { cible, bloques } = choisirCible(vis, tous, p.pistes);
+  viser(p, vis, tous);
+}
+
+// ---- v3 : preuves fusionnées (JEV + cinématique) + SPRT + escalade (2e sommation) ----
+function protocoleV3(p, tous, vis, analyseur, langue) {
+  const m = p.monde;
+  for (const o of tous) {
+    const piste = p.pistes.get(o.id);
+    suivreCinematique(piste, o, m.t); fusionner(piste); piste.statut = statutSPRT(piste);
+  }
+  const aAnalyser = vis.filter(c => p.pistes.get(c.id).besoinAnalyse);
+  if (aAnalyser.length && !analyseur.occupe) analyseur.classer(aAnalyser, p.pistes, langue);
+  if (doitSommer(m.t, m.derniereSommation, tous, p.pistes)) m.sommer();
+  const aEscalader = aResommer(vis, p.pistes);
+  if (aEscalader.length) m.sommerCibles(aEscalader);
+  viser(p, vis, tous, eligiblesV3);
+}
+
+function viser(p, vis, tous, regles) {
+  const m = p.monde, { cible, bloques } = choisirCible(vis, tous, p.pistes, regles);
   for (const id of bloques) { p.pistes.get(id).bloque = true; m.stats.tirs_bloques++; m.emettre("bloque", { id }); }
   p.cibleId = cible?.id ?? null;
 }
@@ -51,7 +75,7 @@ export function pasPartie(p, dt, { analyseur = null, langue = "fr" } = {}) {
   if (p.cibleId && !m.vivante(p.cibleId)) p.cibleId = null;
 
   const tous = observerTous(m, langue), vis = visibles(tous);
-  if (p.mode === "jev" && analyseur) protocole(p, tous, vis, analyseur, langue);
+  if (p.mode === "jev" && analyseur) (p.politique === "v3" ? protocoleV3 : protocole)(p, tous, vis, analyseur, langue);
   if (p.mode === "jev1" && analyseur && !analyseur.occupe && vis.length) analyseur.choisir(p, vis, langue);
   if (p.mode === "regle" && !p.cibleId) p.cibleId = botNaif(vis)?.id ?? null;
 
@@ -60,7 +84,7 @@ export function pasPartie(p, dt, { analyseur = null, langue = "fr" } = {}) {
     const e = p.cibleId && m.entite(p.cibleId);
     if (e) {
       if (orienter(p.tourelle, pointVise(e, p.mode === "jev"), dt) && m.peutTirer()) {
-        m.tirer(e, m.rouleauTouche(e), AUTEURS[p.mode]);
+        m.tirer(e, m.rouleauTouche(e), p.mode === "jev" ? `JEV ${p.politique}` : AUTEURS[p.mode]);
         if (!e.vivant || p.mode === "regle") p.cibleId = null;
       }
     } else relacher(p.tourelle, dt);

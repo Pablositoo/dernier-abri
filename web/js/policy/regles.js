@@ -4,7 +4,9 @@ import { INCOH_MAX, SEUIL_HUMAIN, COOLDOWN_SOMMATION, PORTEE_SOMMATION, BARRICAD
 
 // État d'analyse d'une cible (rempli par analysis/, lu par la politique et le HUD)
 export const nouvellePiste = () => ({ besoinAnalyse: true, pZ: null, incoh: null, pAvant: null, pDecision: null,
-  statut: "analyse", lectures: 0, lueAvecReaction: false, bloque: false });
+  statut: "analyse", lectures: 0, lueAvecReaction: false, bloque: false,
+  // v3 : mesures cinématiques et fusion des preuves
+  mesures: [], fenetre: null, derniereSommeAt: null, L: null, pPost: null, preuves: null });
 
 export function statut(piste, seuil) {
   if (piste.pZ == null) return piste.statut;
@@ -44,9 +46,10 @@ export function eligibles(vis, pistes) {
 }
 
 // → { cible, bloques } : bloques = cibles éligibles refusées pour la 1re fois (survivant dans la ligne de tir)
-export function choisirCible(vis, tous, pistes) {
+// regles : eligibles (v2) ou eligiblesV3 ; la plus urgente d'abord
+export function choisirCible(vis, tous, pistes, regles = eligibles) {
   const bloques = [];
-  for (const c of eligibles(vis, pistes)) {
+  for (const c of regles(vis, pistes).sort((a, b) => tempsAvantImpact(a) - tempsAvantImpact(b))) {
     if (ligneDegagee(c, tous, pistes)) return { cible: c, bloques };
     if (!pistes.get(c.id).bloque) bloques.push(c.id);
   }

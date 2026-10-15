@@ -5,7 +5,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { PAS_SIM, SEUIL_DEFAUT } from "../web/js/config.js";
 import { creerRng } from "../web/js/sim/rng.js";
 import { creerPartie, pasPartie } from "../web/js/partie.js";
-import { DESC_I18N, REACTION_I18N } from "../web/js/perception/descriptions.js";
+import { DESC_I18N, REACTION_DESOBEIT_I18N, REACTION_I18N } from "../web/js/perception/descriptions.js";
 import { appliquerClassement, requeteClassement } from "../web/js/analysis/questions.js";
 
 // ---------- Clé de cache : identique à server/cache_jev.py ----------
@@ -15,14 +15,15 @@ const canon = v => Array.isArray(v) ? `[${v.map(canon).join(",")}]`
 export const cleCache = (modele, state, question) =>
   createHash("sha256").update(canon({ m: modele, q: question, s: state })).digest("hex");
 
-// ---------- Toutes les requêtes que le protocole v2 peut envoyer (≈ 80 questions) ----------
+// ---------- Toutes les requêtes que le protocole peut envoyer (100 questions) ----------
 export function toutesLesRequetes(langues = ["fr", "en"], parLot = 5) {
   const requetes = [];
   for (const langue of langues) {
     const obs = [];
     for (const [nature, descs] of Object.entries(DESC_I18N[langue]))
       descs.forEach((desc, i) => {
-        for (const reaction of [null, REACTION_I18N[langue][nature]]) obs.push({ id: `${nature}_${i}_${reaction ? "r" : "0"}`, desc, reaction });
+        const reactions = { "0": null, r: REACTION_I18N[langue][nature], d: REACTION_DESOBEIT_I18N[langue][nature] };
+        for (const [k, reaction] of Object.entries(reactions)) if (k === "0" || reaction) obs.push({ id: `${nature}_${i}_${k}`, desc, reaction });
       });
     for (let i = 0; i < obs.length; i += parLot) requetes.push(requeteClassement(obs.slice(i, i + parLot), langue));
   }
@@ -105,12 +106,18 @@ export function repondreCache(entrees, modele) {
 // ---------- Une partie headless complète ----------
 const BLESSES = new Set(["blesse_zombie", "blesse_humain"]);
 
-export function jouerPartie({ mode = "jev", graine, seuil = SEUIL_DEFAUT[mode] ?? .85, langue = "en", analyseur = null }) {
-  const p = creerPartie(mode, graine, seuil), detail = { morsures_blesses: 0, morsures_valides: 0, humains_blesses_tues: 0 };
+export function jouerPartie({ mode = "jev", graine, seuil = SEUIL_DEFAUT[mode] ?? .85, langue = "en", analyseur = null,
+                              politique, desobeissance }) {
+  const p = creerPartie(mode, graine, seuil, { politique, monde: desobeissance == null ? {} : { desobeissance } });
+  const detail = { morsures_blesses: 0, morsures_valides: 0, humains_blesses_tues: 0, humains_desobeissants_tues: 0,
+                   humains_desobeissants: 0, tirs_apres_2e_sommation: 0 };
   while (!p.monde.fini)
     for (const ev of pasPartie(p, PAS_SIM, { analyseur, langue })) {
       if (ev.type === "arrivee" && ev.issue === "morsure") detail[BLESSES.has(ev.e.nature) ? "morsures_blesses" : "morsures_valides"]++;
+      if (ev.type === "apparition" && ev.e.desobeit) detail.humains_desobeissants++;
       if (ev.type === "tir" && ev.touche && ev.e.nature === "blesse_humain") detail.humains_blesses_tues++;
+      if (ev.type === "tir" && ev.touche && ev.e.desobeit) detail.humains_desobeissants_tues++;
+      if (ev.type === "tir" && ev.touche && ev.e.sommations >= 2) detail.tirs_apres_2e_sommation++;
     }
   return { graine, t: p.monde.t, ...p.monde.stats, ...detail };
 }

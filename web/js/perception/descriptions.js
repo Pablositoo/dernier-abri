@@ -29,3 +29,11 @@ export const REACTION_I18N = {
 
 // nombre de descriptions par nature (identique en FR et EN)
 export const NB_DESC = Object.fromEntries(Object.entries(DESC_I18N.fr).map(([n, l]) => [n, l.length]));
+
+// Réaction d'un humain qui n'obéit pas à la 1re sommation (panique, n'entend pas) : cas piège pour la sécurité
+export const REACTION_DESOBEIT_I18N = {
+  fr: { humain: "panique, ne s'arrête pas et continue de courir vers l'abri en criant",
+        blesse_humain: "ne semble pas entendre et continue de boiter vers l'abri en tenant son bras" },
+  en: { humain: "panics, does not stop and keeps running toward the shelter shouting",
+        blesse_humain: "doesn't seem to hear and keeps limping toward the shelter holding their arm" },
+};

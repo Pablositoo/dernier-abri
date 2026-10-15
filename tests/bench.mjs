@@ -22,6 +22,7 @@ const { values: o } = parseArgs({ options: {
   latence: { type: "string", default: "0.25" }, langue: { type: "string", default: "en" },
   seuil: { type: "string" }, modele: { type: "string", default: MODELE_PAR_DEFAUT },
   cache: { type: "string", default: join(RACINE, "cache_jev.json") }, json: { type: "string" },
+  politique: { type: "string", default: "v3" }, desobeissance: { type: "string" },
   "lister-questions": { type: "boolean", default: false },
 } });
 
@@ -52,7 +53,8 @@ const t0 = performance.now(), parties = [];
 let appels = 0, questions = 0;
 for (let g = G0; g < G0 + N; g++) {
   const analyseur = fabrique(g);
-  parties.push(jouerPartie({ mode: o.mode, graine: g, langue, analyseur, ...(o.seuil ? { seuil: +o.seuil } : {}) }));
+  parties.push(jouerPartie({ mode: o.mode, graine: g, langue, analyseur, politique: o.politique,
+    ...(o.desobeissance != null ? { desobeissance: +o.desobeissance } : {}), ...(o.seuil ? { seuil: +o.seuil } : {}) }));
   appels += analyseur?.appels ?? 0; questions += analyseur?.questions ?? 0;
 }
 const duree = (performance.now() - t0) / 1000;
@@ -65,15 +67,18 @@ const resume = cle => {
 };
 const tirs = resume("tirs").total, rates = resume("rates").total;
 const lignes = [
-  ["humains_tues", "Humains abattus"], ["humains_blesses_tues", "  dont humains blessés"], ["morsures", "Morsures"],
+  ["humains_tues", "Humains abattus"], ["humains_blesses_tues", "  dont humains blessés"],
+  ["humains_desobeissants_tues", "  dont désobéissants"], ["humains_desobeissants", "Humains désobéissants"], ["morsures", "Morsures"],
   ["morsures_blesses", "  dont zombies blessés"], ["morsures_valides", "  dont zombies valides"], ["zombies_tues", "Zombies tués"],
   ["humains_sauves", "Humains sauvés"], ["tirs", "Tirs"], ["tirs_bloques", "Tirs bloqués"], ["sommations", "Sommations"],
+  ["sommations_ciblees", "2es sommations ciblées"], ["tirs_apres_2e_sommation", "Tués après 2e sommation"],
 ];
 const stats = Object.fromEntries(lignes.map(([k]) => [k, resume(k)]));
 const scores = parties.map(p => 10 * p.zombies_tues + 15 * p.humains_sauves - 50 * p.humains_tues - 20 * p.morsures);
 const scoreMoy = scores.reduce((a, b) => a + b, 0) / N;
 
-console.log(`\n${N} parties · mode ${o.mode}${o.mode === "jev" ? ` · JEV ${o.jev} (${o.modele}, latence ${latence} s)` : ""} · langue ${langue} · graines ${G0}–${G0 + N - 1} · ${duree.toFixed(1)} s\n`);
+const monde = o.desobeissance != null ? `désobéissance ${o.desobeissance}` : "désobéissance par défaut";
+console.log(`\n${N} parties · mode ${o.mode}${o.mode === "jev" ? ` · politique ${o.politique} · JEV ${o.jev} (${o.modele}, latence ${latence} s)` : ""} · ${monde} · langue ${langue} · graines ${G0}–${G0 + N - 1} · ${duree.toFixed(1)} s\n`);
 console.log("Indicateur".padEnd(26) + "moy./partie".padStart(12) + "± IC95".padStart(9) + "total".padStart(8) + "max".padStart(6));
 for (const [k, nom] of lignes) {
   const s = stats[k];

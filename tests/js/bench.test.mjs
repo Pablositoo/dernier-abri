@@ -15,9 +15,9 @@ test("questions JEV : ni id ni distance (même fiche ⇒ même question ⇒ cach
   assert.ok(!a.questions.z_t1.instructions.includes("t1"));
 });
 
-test("toutes les requêtes possibles : 80 questions (10 descriptions × 2 états × 2 questions × 2 langues)", () => {
+test("toutes les requêtes possibles : 100 questions (10 descriptions × 2 états + 5 humains désobéissants, × 2 questions × 2 langues)", () => {
   const n = toutesLesRequetes().reduce((s, r) => s + Object.keys(r.questions).length, 0);
-  assert.equal(n, 80);
+  assert.equal(n, 100);
 });
 
 test("analyseur différé : la réponse n'arrive qu'après la latence simulée", () => {

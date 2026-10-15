@@ -21,16 +21,18 @@ export function hud(partie, jev, vis) {
   $("ammoLbl").textContent = recharge ? tr().recharge : tr().munitions;
   $("bullets").innerHTML = Array.from({ length: MUNITIONS }, (_, i) => `<i class="${!recharge && i < m.mun ? "" : "off"}"></i>`).join("");
   if (!partie.mode.startsWith("jev")) return;
-  $("seuil").textContent = partie.seuil.toFixed(2);
+  $("seuil").textContent = partie.politique === "v3" && partie.mode === "jev" ? "SPRT" : partie.seuil.toFixed(2);
   const l = jev.lat; $("lat").textContent = l.length ? Math.round(l.slice(-10).reduce((a, b) => a + b, 0) / Math.min(10, l.length)) + " ms" : "—";
   $("calls").textContent = `${jev.appels} / ${jev.tokens}`;
   $("errRow").textContent = jev.err;
   if (partie.mode === "jev") {
     $("dec").textContent = partie.cibleId ? tr().tirerSur + partie.cibleId : tr().attendre;
     $("bars").innerHTML = vis.map(c => {
-      const p = partie.pistes.get(c.id), pz = p.pZ ?? 0, cls = p.statut === "zombie" ? "fire" : "";
+      // v3 : probabilité a posteriori (toutes preuves fusionnées) ; 🚶 a continué / ✋ s'est arrêté après une sommation
+      const p = partie.pistes.get(c.id), v3 = partie.politique === "v3", pz = (v3 ? p.pPost : p.pZ) ?? 0, cls = p.statut === "zombie" ? "fire" : "";
+      const mvt = v3 ? p.mesures.map(m => m.arret === true ? "✋" : m.arret === false ? "🚶" : "·").join("") : "";
       const col = p.statut === "humain" ? "background:var(--green)" : "";
-      return `<div class="bar"><i class="fill ${cls}" style="width:${pz * 100}%;${col}"></i><em><span>${ICONES[p.statut]} ${c.id} ${p.lueAvecReaction ? "📢✓" : c.sommeAt !== null ? "📢…" : ""}</span><span>${p.pZ == null ? "—" : "p(z)=" + pz.toFixed(2)}${p.incoh > INCOH_MAX ? " ⚠" : ""}</span></em></div>`;
+      return `<div class="bar"><i class="fill ${cls}" style="width:${pz * 100}%;${col}"></i><em><span>${ICONES[p.statut]} ${c.id} ${p.lueAvecReaction ? "📢✓" : c.sommeAt !== null ? "📢…" : ""}${mvt}</span><span>${(v3 ? p.L == null || p.statut === "analyse" : p.pZ == null) ? "—" : "p(z)=" + pz.toFixed(2)}${p.incoh > INCOH_MAX ? " ⚠" : ""}</span></em></div>`;
     }).join("");
     return;
   }

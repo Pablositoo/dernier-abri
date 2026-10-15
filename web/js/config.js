@@ -13,9 +13,30 @@ export const chanceTouche = d => Math.max(0.15, Math.min(0.95, 1 - d / 60));
 export const PAS_SIM = 1 / 60;
 export const DT_REEL_MAX = 0.05;          // au-delà (onglet ralenti), la simulation ralentit au lieu de sauter
 
+// ---------- Monde : obéissance à la sommation ----------
+// Cas piège pour la sécurité : un humain qui panique ou n'entend pas ne s'arrête pas (0 = monde v2.2)
+export const P_DESOBEISSANCE = 0.05;      // humain qui ne s'arrête pas à la 1re sommation
+export const P_OBEIT_2E = 0.7;            // … mais s'arrête à la 2e sommation
+export const MAX_SOMMATIONS = 2;          // 1 sommation générale + 1 sommation ciblée par silhouette
+
 // ---------- Politique (règles d'engagement) ----------
+export const POLITIQUE_DEFAUT = "v3";     // v2 = seuil fixe (v2.2), v3 = fusion bayésienne + SPRT
 export const SEUIL_DEFAUT = { jev: 0.85, jev1: 0.5 };
 export const INCOH_MAX = 0.15, SEUIL_HUMAIN = 0.25;
+
+// ---------- v3 : fusion des preuves (log-odds) + test séquentiel de Wald ----------
+export const FUSION = {
+  prior: 0.5,                             // neutre : on n'ajoute pas la proportion de zombies du jeu
+  pClip: 0.01,                            // p JEV bornée à [0,01 ; 0,99] (pas de certitude absolue)
+  // analyseur cinématique : vraisemblances supposées (le simulateur, lui, a ses propres taux ci-dessus)
+  pBougeSiZombie: 0.98,                   // un zombie ignore la sommation
+  pBougeSiHumain: 0.05,                   // un humain qui ne s'arrête pas (1re sommation)
+  pBougeEncoreSiHumain: 0.3,              // … et qui ne s'arrête toujours pas à la 2e (désobéissance persistante)
+  fenetre: [0.5, 2.0],                    // mesure du déplacement entre sommation + 0,5 s et + 2,0 s
+  seuilArret: 0.2, seuilBouge: 0.5,       // m : < 0,2 = arrêté, > 0,5 = continue, entre les deux = pas de preuve
+  alpha: 0.005,                           // risque visé de tirer sur un humain
+  beta: 0.05,                             // risque visé de laisser passer un zombie
+};
 
 // ---------- Tir / visée ----------
 export const HAUTEUR_OEIL = 1.65;

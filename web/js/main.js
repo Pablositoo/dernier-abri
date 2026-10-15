@@ -1,6 +1,6 @@
 // Orchestration : boucle à pas fixe (horloge simulée), rendu, contrôles, journal.
 import * as THREE from "three";
-import { DT_REEL_MAX, PAS_SIM, SEUIL_DEFAUT } from "./config.js";
+import { DT_REEL_MAX, PAS_SIM, POLITIQUE_DEFAUT, SEUIL_DEFAUT } from "./config.js";
 import { creerRng, graineAleatoire } from "./sim/rng.js";
 import { estZombie } from "./sim/monde.js";
 import { AUTEURS, creerPartie, pasPartie } from "./partie.js";
@@ -20,6 +20,7 @@ const PARAMS = new URLSearchParams(location.search);
 const LITE = PARAMS.has("lite");                                     // ?lite = PC lent
 const SPEED = +PARAMS.get("speed") || 1;                             // ?speed=8 : accéléré (tests)
 const GRAINE = PARAMS.has("seed") ? (+PARAMS.get("seed") >>> 0) : null;   // ?seed=42 : partie reproductible
+const POLITIQUE = PARAMS.get("politique") === "v2" ? "v2" : POLITIQUE_DEFAUT;  // ?politique=v2 : ancienne politique (comparaison)
 const rngRendu = creerRng(graineAleatoire());                       // hasard visuel : n'influence jamais la partie
 
 const { renderer, scene, camera, lampadaires, dust } = creerScene(rngRendu, LITE);
@@ -34,11 +35,11 @@ function nouvellePartie(mode) {
   if (mode === "jev1" && seuil > .6) seuil = SEUIL_DEFAUT.jev1;
   if (mode === "jev" && seuil < .6) seuil = SEUIL_DEFAUT.jev;
   const graine = GRAINE ?? graineAleatoire();
-  partie = creerPartie(mode, graine, seuil); accu = 0;
-  console.info(`Partie ${mode} · graine ${graine} (la rejouer : ?seed=${graine})`);
+  partie = creerPartie(mode, graine, seuil, { politique: POLITIQUE }); accu = 0;
+  console.info(`Partie ${mode} · politique ${POLITIQUE} · graine ${graine} (la rejouer : ?seed=${graine})`);
   reinitialiserJEV(); $("feed").innerHTML = "";
   $("start").classList.add("hidden"); $("end").classList.add("hidden");
-  $("mode").textContent = tr().modes[mode];
+  afficherMode();
   $("brain").style.display = mode.startsWith("jev") ? "" : "none";
   $("rules").style.display = mode === "jev" ? "" : "none";
   if (mode === "manuel") renderer.domElement.requestPointerLock?.();
@@ -67,14 +68,14 @@ function surEvenements(evs) {
       case "apparition": vues.set(e.id, new VuePerso(e, rngRendu, scene, $("tags"))); break;
       case "sommation":
         $("shout").style.opacity = 1; setTimeout(() => $("shout").style.opacity = 0, 900);
-        effets.onde(); bip(); feed(tr().sommation); break;
+        effets.onde(); bip(); feed(ev.cibles ? tr().sommationCiblee(ev.cibles) : tr().sommation); break;
       case "bloque": feed(tr().bloque(ev.id)); break;
       case "tir":
         effetTir(ev);
         if (ev.touche) {
           const z = estZombie(e.nature), p = ev.piste;
           vues.get(e.id)?.tuer(nom, z); journalDecision(partie, e, p, "abattu", L);
-          const pr = ev.auteur.startsWith("JEV") ? (p?.pZ ?? p?.pDecision) : null;
+          const pr = ev.auteur.startsWith("JEV") ? (p?.pPost ?? p?.pZ ?? p?.pDecision) : null;   // v3 : p fusionné
           feed(`${ev.auteur} → ${e.id} · ${nom.toLowerCase()} ${z ? "✓" : "✗ " + tr().erreur}${pr ? " · p=" + pr.toFixed(2) : ""}  « ${decrire(e, L)} »`, z ? "good" : "bad");
         } else if (e) feed(`${ev.auteur} → ${e.id} · ${tr().rate} (${Math.round(e.distance)} m)`);
         break;
@@ -108,7 +109,12 @@ addEventListener("mousedown", () => {
   if (document.pointerLockElement !== renderer.domElement) return renderer.domElement.requestPointerLock?.();
   if (partie.monde.peutTirer()) { const e = viseSous(); partie.monde.tirer(e, !!e, AUTEURS.manuel); }
 });
-function changerLangue(l) { appliquerLangue(l); if (partie) $("mode").textContent = tr().modes[partie.mode]; }
+// libellé du mode et règles affichées selon la politique (v2 seuil fixe / v3 SPRT)
+function afficherMode() {
+  if (partie) $("mode").textContent = partie.mode === "jev" ? `${tr().modes.jev} ${partie.politique}` : tr().modes[partie.mode];
+  $("rules").innerHTML = POLITIQUE === "v3" ? tr().reglesV3 : tr().regles;
+}
+function changerLangue(l) { appliquerLangue(l); afficherMode(); }
 addEventListener("keydown", e => {
   if (e.key === "l" || e.key === "L") changerLangue(langue() === "fr" ? "en" : "fr");
   if (e.key === "ArrowUp") changerSeuil(+.05);
