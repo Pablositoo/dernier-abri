@@ -4,7 +4,8 @@ import { postJSON } from "../net.js";
 import { TXT } from "../ui/i18n.js";
 import { appliquerClassement, requeteClassement } from "./questions.js";
 
-export const etatJEV = { appels: 0, tokens: 0, lat: [], busy: false, probas: {}, choix: "—", err: "", generation: 0 };
+// modele : version servie par le proxy (dérive : comparée au modèle de la calibration, voir partie.js)
+export const etatJEV = { appels: 0, tokens: 0, lat: [], busy: false, probas: {}, choix: "—", err: "", generation: 0, modele: null };
 
 export function reinitialiserJEV() {
   Object.assign(etatJEV, { appels: 0, tokens: 0, lat: [], busy: false, probas: {}, choix: "—", err: "" });
@@ -13,11 +14,13 @@ export function reinitialiserJEV() {
 
 function compter(r) {
   etatJEV.appels++; etatJEV.tokens += r.usage?.input_tokens || 0; etatJEV.lat.push(r.latence_ms); etatJEV.err = "";
+  if (r.model) etatJEV.modele = r.model;
 }
 const pause = ms => new Promise(r => setTimeout(r, ms));   // rythme réseau (temps réel), pas logique de jeu
 
 export const analyseurJEV = {
   get occupe() { return etatJEV.busy; },
+  get modeleServi() { return etatJEV.modele; },
 
   // ---- v2 : 2 questions Noul opposées par cible → p(zombie) et incohérence ----
   async classer(cibles, pistes, langue) {

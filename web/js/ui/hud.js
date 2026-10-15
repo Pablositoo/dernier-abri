@@ -24,7 +24,8 @@ export function hud(partie, jev, vis) {
   $("seuil").textContent = partie.politique !== "v2" && partie.mode === "jev" ? "SPRT" : partie.seuil.toFixed(2);
   const l = jev.lat; $("lat").textContent = l.length ? Math.round(l.slice(-10).reduce((a, b) => a + b, 0) / Math.min(10, l.length)) + " ms" : "—";
   $("calls").textContent = `${jev.appels} / ${jev.tokens}`;
-  $("errRow").textContent = jev.err;
+  // dérive : reste affichée toute la partie (la calibration est désactivée, voir partie.js)
+  $("errRow").textContent = jev.err || (partie.derive ? tr().derive(partie.derive.servi, partie.derive.attendu) : "");
   if (partie.mode === "jev") {
     $("dec").textContent = partie.cibleId ? tr().tirerSur + partie.cibleId : tr().attendre;
     $("bars").innerHTML = vis.map(c => {

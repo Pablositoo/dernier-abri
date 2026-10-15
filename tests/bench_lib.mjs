@@ -30,8 +30,20 @@ export function toutesLesRequetes(langues = ["fr", "en"], parLot = 5) {
   return requetes;
 }
 
+// ---------- Identification d'une fiche (pour l'export des lectures : la vérité vient du catalogue, pas de JEV) ----------
+export function identifierFiche(desc, reaction, langue) {
+  for (const [nature, descs] of Object.entries(DESC_I18N[langue])) {
+    const i = descs.indexOf(desc);
+    if (i < 0) continue;
+    const k = !reaction ? "0" : reaction === REACTION_I18N[langue][nature] ? "r" : "d";
+    return { nature, item: `${nature}_${i}_${k}` };
+  }
+  throw new Error(`fiche inconnue : ${desc}`);
+}
+
 // ---------- Analyseur différé : la réponse arrive après `latence` secondes de temps simulé ----------
-export function analyseurDiffere(repondre, latence) {
+// surLecture(cible, z, h, langue) : optionnel, appelé pour chaque lecture JEV (export pour la calibration)
+export function analyseurDiffere(repondre, latence, surLecture = null) {
   let attente = null, t = 0;
   return {
     appels: 0, questions: 0,
@@ -44,7 +56,9 @@ export function analyseurDiffere(repondre, latence) {
       cibles.forEach(c => pistes.get(c.id).besoinAnalyse = false);
       const req = requeteClassement(cibles, langue);
       this.appels++; this.questions += Object.keys(req.questions).length;
-      attente = { fin: t + latence, cibles, pistes, answers: repondre(req) };
+      const answers = repondre(req);
+      if (surLecture) for (const c of cibles) surLecture(c, answers["z_" + c.id]?.noul, answers["h_" + c.id]?.noul, langue);
+      attente = { fin: t + latence, cibles, pistes, answers };
     },
     choisir() { throw new Error("le mode v1 (Choice) n'est pas simulé en headless"); },
   };
@@ -107,8 +121,8 @@ export function repondreCache(entrees, modele) {
 const BLESSES = new Set(["blesse_zombie", "blesse_humain"]);
 
 export function jouerPartie({ mode = "jev", graine, seuil = SEUIL_DEFAUT[mode] ?? .85, langue = "en", analyseur = null,
-                              politique, desobeissance }) {
-  const p = creerPartie(mode, graine, seuil, { politique, monde: desobeissance == null ? {} : { desobeissance } });
+                              politique, desobeissance, calibrateur = null }) {
+  const p = creerPartie(mode, graine, seuil, { politique, calibrateur, monde: desobeissance == null ? {} : { desobeissance } });
   const detail = { morsures_blesses: 0, morsures_valides: 0, humains_blesses_tues: 0, humains_desobeissants_tues: 0,
                    humains_desobeissants: 0, tirs_apres_2e_sommation: 0 };
   while (!p.monde.fini)

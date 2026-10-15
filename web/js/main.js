@@ -20,7 +20,7 @@ const PARAMS = new URLSearchParams(location.search);
 const LITE = PARAMS.has("lite");                                     // ?lite = PC lent
 const SPEED = +PARAMS.get("speed") || 1;                             // ?speed=8 : accéléré (tests)
 const GRAINE = PARAMS.has("seed") ? (+PARAMS.get("seed") >>> 0) : null;   // ?seed=42 : partie reproductible
-const POLITIQUE = ["v2", "v3", "v4"].includes(PARAMS.get("politique")) ? PARAMS.get("politique") : POLITIQUE_DEFAUT;  // ?politique=v2|v3 : comparaison
+const POLITIQUE = ["v2", "v3", "v4", "v5"].includes(PARAMS.get("politique")) ? PARAMS.get("politique") : POLITIQUE_DEFAUT;  // ?politique=v2…v5 : comparaison
 const rngRendu = creerRng(graineAleatoire());                       // hasard visuel : n'influence jamais la partie
 
 const { renderer, scene, camera, lampadaires, dust } = creerScene(rngRendu, LITE);
@@ -70,6 +70,7 @@ function surEvenements(evs) {
         $("shout").style.opacity = 1; setTimeout(() => $("shout").style.opacity = 0, 900);
         effets.onde(); bip(); feed(ev.cibles ? tr().sommationCiblee(ev.cibles) : tr().sommation); break;
       case "bloque": feed(tr().bloque(ev.id)); break;
+      case "derive": feed(tr().derive(ev.servi, ev.attendu), "bad"); console.warn(`dérive JEV : ${ev.servi} ≠ ${ev.attendu}`); break;
       case "tir":
         effetTir(ev);
         if (ev.touche) {
@@ -112,7 +113,8 @@ addEventListener("mousedown", () => {
 // libellé du mode et règles affichées selon la politique (v2 seuil fixe / v3 SPRT)
 function afficherMode() {
   if (partie) $("mode").textContent = partie.mode === "jev" ? `${tr().modes.jev} ${partie.politique}` : tr().modes[partie.mode];
-  $("rules").innerHTML = { v2: tr().regles, v3: tr().reglesV3, v4: tr().reglesV3 + tr().reglesV4 }[POLITIQUE];
+  $("rules").innerHTML = { v2: tr().regles, v3: tr().reglesV3, v4: tr().reglesV3 + tr().reglesV4,
+    v5: tr().reglesV3 + tr().reglesV4 + tr().reglesV5 }[POLITIQUE];
 }
 function changerLangue(l) { appliquerLangue(l); afficherMode(); }
 addEventListener("keydown", e => {

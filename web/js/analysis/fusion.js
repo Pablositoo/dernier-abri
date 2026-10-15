@@ -7,8 +7,10 @@ export const sigmoide = L => 1 / (1 + Math.exp(-L));
 
 // JEV : seule la DERNIÈRE lecture cohérente compte (les lectures successives d'une même fiche ne sont pas
 // indépendantes : les additionner compterait deux fois la description). Lecture incohérente = pas de preuve.
-export function preuveJEV(piste) {
-  return piste.pZ != null && piste.incoh <= INCOH_MAX ? logit(piste.pZ) : 0;
+// calibrateur (v5, analysis/calibration.js) : remplace logit(pZ) brut par un rapport de vraisemblance calibré.
+export function preuveJEV(piste, calibrateur = null) {
+  if (piste.pZ == null || piste.incoh > INCOH_MAX) return 0;
+  return calibrateur ? calibrateur.llr(piste.pZ, piste.incoh) : logit(piste.pZ);
 }
 
 // Cinématique : chaque sommation donne une mesure. Une désobéissance humaine peut être persistante (panique),
@@ -25,8 +27,8 @@ export function preuveCinematique(mesures) {
   return L;
 }
 
-export function fusionner(piste) {
-  const jev = preuveJEV(piste), cine = preuveCinematique(piste.mesures);
+export function fusionner(piste, calibrateur = null) {
+  const jev = preuveJEV(piste, calibrateur), cine = preuveCinematique(piste.mesures);
   piste.preuves = { prior: logit(FUSION.prior), jev, cine };
   piste.L = piste.preuves.prior + jev + cine;
   piste.pPost = sigmoide(piste.L);

@@ -34,6 +34,7 @@ web/
   js/render/       Three.js : scène, personnages, effets
   js/ui/           HUD, i18n (FR/EN : textes UI ET questions envoyées à JEV)
   js/config.js     toutes les constantes réglables (seuils, coûts, portées)
+analyse/           (phase 5) calibration de JEV : calibration.py + notebook (numpy, scikit-learn, matplotlib — hors serveur)
 vigie/             (phase 6) noyau générique Python : Source / Analyzer / Policy / Responder
 tests/             tests unitaires + simulateur headless
 ```
@@ -76,6 +77,12 @@ node --test tests/js/                       # modules JS purs (rng, policy, simu
 python3 -m server.remplir_cache --dry-run   # puis sans --dry-run : ≈ 8 vrais appels, une fois par version de JEV
 node tests/bench.mjs --parties 500 --graine 1 --jev cache --langue en   # vraies réponses JEV rejouées (cache_jev.json)
 node tests/bench.mjs --parties 500 --jev fake                          # faux JEV (optimiste), sans cache
+
+# Calibration + dérive (phase 5)
+node tests/bench.mjs --parties 500 --langue en --lectures bench_resultats/lectures_en.json   # idem --langue fr
+python3 -m analyse.calibration              # métriques, analyse/fiabilite_jev.png, web/js/analysis/calibration_jev.js
+node tests/bench.mjs --politique v5 --calibration-cv bench_resultats/calibration_cv.json     # v5 HORS échantillon
+python3 -m server.derive --dry-run          # puis sans --dry-run : 12 canaris = 2 appels réels ; sortie 1 si dérive
 ```
 Cache JEV : `cache_jev.json` (ignoré par git), clé = sha256(modèle + state + question), identique en Python (`server/cache_jev.py`) et en JS (`tests/bench_lib.mjs`). Les questions ne contiennent ni id ni distance, et `state` = {langue, contexte} : même fiche ⇒ même question ⇒ 80 questions possibles en tout.
 
@@ -97,10 +104,17 @@ Monde simulé : 5 % d'humains désobéissants (`P_DESOBEISSANCE`, cas piège ; `
 | FR v2 → v3 (désob. 5 %) | 0 → 0 | 1,16 → 1,25 (n.s.) | 0,12 → 0,13 | 869 → 861 |
 | EN / FR v3, désob. 50 % (stress) | 0 / 0 (≈ 9 900 désobéissants chacun) | 1,34 / 1,26 | | |
 
-**Politique v4 (phase 4, par défaut)** = v3 + tir d'opportunité jusqu'à 45 m dès que la ligne est libre + rechargement tactique + verrou de ligne de tir au moment du tir. Diagnostic des morsures restantes en v3 (EN) : 56 % = ligne de tir jamais libre une fois le zombie confirmé (prix de la sécurité, non évitable sans risquer des humains), 30 % = libre seulement entre 30 et 45 m, 14 % = exécution. Une prédiction des positions (« attendre une meilleure occasion ») n'apportait rien : supprimée au profit de la règle simple.
+**Politique v4 (phase 4)** = v3 + tir d'opportunité jusqu'à 45 m dès que la ligne est libre + rechargement tactique + verrou de ligne de tir au moment du tir. Diagnostic des morsures restantes en v3 (EN) : 56 % = ligne de tir jamais libre une fois le zombie confirmé (prix de la sécurité, non évitable sans risquer des humains), 30 % = libre seulement entre 30 et 45 m, 14 % = exécution. Une prédiction des positions (« attendre une meilleure occasion ») n'apportait rien : supprimée au profit de la règle simple.
 Comparaison appariée v4 − v3 sur 2 000 graines : morsures −0,13 ± 0,08 (EN), −0,12 ± 0,08 (FR) ; score +6 ± 4 ; 0 humain abattu (8 000 parties). Précision 62 % → 55 % (plus de tirs de loin).
 
-Sécurité prouvée par le pire cas (`tests/js/v3.test.mjs`) : aucune fiche humaine réelle n'atteint le seuil de tir, même si l'humain désobéit 2 fois. Marge minimale 0,22 (EN, humain blessé désobéissant, JEV p = 0,705) : à surveiller si JEV change de version.
+**Politique v5 (phase 5, par défaut)** = v4 + lectures JEV calibrées (Platt : p' = σ(1,45·logit p − 0,56), moins logit du taux de zombies 0,607 car la fusion a son propre a priori). Analyse : `analyse/calibration.ipynb`.
+- 50 fiches distinctes, 24 cohérentes : la taille d'échantillon effective est le nombre de FICHES (pas les 110 000 lectures) → validation croisée « une description à la fois ».
+- JEV brut est **sous-confiant** (ECE 0,078). Isotonique : meilleures métriques (ECE CV 0,016) mais en escalier → hors échantillon, le zombie blessé EN (p = 0,835) n'est plus confirmé : **4,23 morsures/partie** au benchmark. Platt : ECE CV 0,040.
+- Règle de choix (`analyse.calibration.choisir`) : meilleure log-loss CV parmi les calibrateurs qui gardent une marge ≥ JEV brut ET ne ralentissent la confirmation d'aucune fiche zombie (2e critère ajouté après le benchmark hors échantillon de l'isotonique).
+- Résultat v5 (Platt) : parties **identiques** à v4 (en/hors échantillon, stress 50 %), marge pire cas **0,22 → 0,78** (CV). Leçon : une meilleure calibration n'est pas une meilleure décision.
+- **Dérive** : passive (modèle servi ≠ demandé ⇒ alerte, jamais en cache, v5 repasse en brut + bandeau) ; active (`server.derive`, canaris appariés, |Δp| ≤ 0,10, décalage moyen ≤ 0,05). 1er contrôle réel (15/10/2026) : pas de dérive, mais |Δp| max = 0,10 → **JEV n'est pas déterministe** ; le cache fige UN tirage. Un humain blessé EN à p = 0,705 devient dangereux en brut dès p > 0,748 (+0,043), en v5 dès p > 0,807 (+0,10). Étude du bruit à faire (répétitions).
+
+Sécurité prouvée par le pire cas (`tests/js/v3.test.mjs`, `v5.test.mjs`) : aucune fiche humaine réelle n'atteint le seuil de tir, même si l'humain désobéit 2 fois. Marge minimale 0,22 (EN, humain blessé désobéissant, JEV p = 0,705) : à surveiller si JEV change de version.
 **Critères d'acceptation** (benchmark, 500 parties) : humains abattus = 0 ; morsures moyennes en baisse par rapport à la base v2.2 ; aucune régression de latence.
 
 ## Feuille de route (état)
@@ -109,7 +123,7 @@ Sécurité prouvée par le pire cas (`tests/js/v3.test.mjs`) : aucune fiche huma
 - [x] 2. Cache JEV + simulateur headless + benchmark
 - [x] 3. Fusion bayésienne + SPRT + analyseur cinématique + 2ᵉ sommation
 - [x] 4. Politique par coût + ordonnancement + vérification de la ligne de tir au moment du tir
-- [ ] 5. Calibration (fiabilité, isotonique, dérive)
+- [x] 5. Calibration (fiabilité, isotonique, dérive)
 - [ ] 6. Noyau générique `vigie/` + `GameSource` (WebSocket)
 - [ ] 7. Connecteurs réels (logs, métriques, caméra RTSP en alerte et enregistrement uniquement)
 

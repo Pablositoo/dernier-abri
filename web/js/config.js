@@ -20,7 +20,8 @@ export const P_OBEIT_2E = 0.7;            // … mais s'arrête à la 2e sommati
 export const MAX_SOMMATIONS = 2;          // 1 sommation générale + 1 sommation ciblée par silhouette
 
 // ---------- Politique (règles d'engagement) ----------
-export const POLITIQUE_DEFAUT = "v4";     // v2 = seuil fixe (v2.2), v3 = fusion bayésienne + SPRT, v4 = v3 + ordonnancement
+export const POLITIQUE_DEFAUT = "v5";     // v2 = seuil fixe (v2.2), v3 = fusion bayésienne + SPRT, v4 = v3 + ordonnancement,
+                                          // v5 = v4 + lectures JEV calibrées (analysis/calibration.js)
 export const SEUIL_DEFAUT = { jev: 0.85, jev1: 0.5 };
 export const INCOH_MAX = 0.15, SEUIL_HUMAIN = 0.25;
 

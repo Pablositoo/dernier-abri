@@ -3,16 +3,19 @@
 //   node tests/bench.mjs --parties 500 --graine 1 --jev cache      # vraies réponses JEV (cache_jev.json)
 //   node tests/bench.mjs --parties 500 --jev fake                  # faux JEV à mots-clés (gratuit, optimiste)
 //   node tests/bench.mjs --mode regle                              # bot naïf (référence)
+//   node tests/bench.mjs --politique v5 --calibration-cv bench_resultats/calibration_cv.json   # v5 HORS échantillon
+//   node tests/bench.mjs --lectures l.json --langue en               # exporte les lectures JEV (calibration, phase 5)
 //   node tests/bench.mjs --lister-questions                        # requêtes possibles (utilisé par server/remplir_cache.py)
 //
 // Critère d'acceptation d'une politique (CLAUDE.md) : humains abattus = 0 sur 500 parties.
 import { parseArgs } from "node:util";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import { MODELE_PAR_DEFAUT } from "./bench_config.mjs";
-import { analyseurDiffere, chargerCache, creerRng, jouerPartie, questionsManquantes, repondreCache, repondreFaux,
+import { creerCalibrateur } from "../web/js/analysis/calibration.js";
+import { analyseurDiffere, chargerCache, creerRng, identifierFiche, jouerPartie, questionsManquantes, repondreCache, repondreFaux,
   toutesLesRequetes } from "./bench_lib.mjs";
 
 const RACINE = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -22,7 +25,8 @@ const { values: o } = parseArgs({ options: {
   latence: { type: "string", default: "0.25" }, langue: { type: "string", default: "en" },
   seuil: { type: "string" }, modele: { type: "string", default: MODELE_PAR_DEFAUT },
   cache: { type: "string", default: join(RACINE, "cache_jev.json") }, json: { type: "string" },
-  politique: { type: "string", default: "v4" }, desobeissance: { type: "string" },
+  politique: { type: "string", default: "v5" }, desobeissance: { type: "string" }, lectures: { type: "string" },
+  "calibration-cv": { type: "string" },
   "lister-questions": { type: "boolean", default: false },
 } });
 
@@ -32,6 +36,20 @@ if (o["lister-questions"]) {
 }
 
 const N = +o.parties, G0 = +o.graine, latence = +o.latence, langue = o.langue;
+// Lectures JEV agrégées par fiche : { item → {langue, nature, z, h, n} } (n = nombre de fois où la politique l'a demandée)
+const lectures = new Map();
+const surLecture = !o.lectures ? null : (c, z, h, lg) => {
+  const { nature, item } = identifierFiche(c.desc, c.reaction, lg), k = lg + " " + item;
+  if (!lectures.has(k)) lectures.set(k, { langue: lg, item, nature, z, h, n: 0 });
+  lectures.get(k).n++;
+};
+// v5 hors échantillon : chaque fiche est calibrée par un modèle appris SANS sa description (analyse/calibration.py)
+let calibrateur = null;
+if (o["calibration-cv"]) {
+  const cv = JSON.parse(readFileSync(o["calibration-cv"], "utf8"));
+  if (cv.modele !== o.modele) throw new Error(`table de calibration pour ${cv.modele}, pas ${o.modele}`);
+  calibrateur = creerCalibrateur({ ...cv, methode: "table", table: cv.table.filter(l => l.langue === langue) });
+}
 let fabrique = () => null;
 if (o.mode === "jev") {
   if (o.jev === "cache") {
@@ -42,9 +60,9 @@ if (o.mode === "jev") {
       process.exit(2);
     }
     const repondre = repondreCache(entrees, o.modele);
-    fabrique = () => analyseurDiffere(repondre, latence);
+    fabrique = () => analyseurDiffere(repondre, latence, surLecture);
   } else if (o.jev === "fake") {
-    fabrique = g => analyseurDiffere(repondreFaux(creerRng(g ^ 0x9e3779b9)), latence);
+    fabrique = g => analyseurDiffere(repondreFaux(creerRng(g ^ 0x9e3779b9)), latence, surLecture);
   } else throw new Error(`--jev ${o.jev} inconnu (cache | fake)`);
 }
 
@@ -53,7 +71,7 @@ const t0 = performance.now(), parties = [];
 let appels = 0, questions = 0;
 for (let g = G0; g < G0 + N; g++) {
   const analyseur = fabrique(g);
-  parties.push(jouerPartie({ mode: o.mode, graine: g, langue, analyseur, politique: o.politique,
+  parties.push(jouerPartie({ mode: o.mode, graine: g, langue, analyseur, politique: o.politique, calibrateur,
     ...(o.desobeissance != null ? { desobeissance: +o.desobeissance } : {}), ...(o.seuil ? { seuil: +o.seuil } : {}) }));
   appels += analyseur?.appels ?? 0; questions += analyseur?.questions ?? 0;
 }
@@ -79,7 +97,7 @@ const scores = parties.map(p => 10 * p.zombies_tues + 15 * p.humains_sauves - 50
 const scoreMoy = scores.reduce((a, b) => a + b, 0) / N;
 
 const monde = o.desobeissance != null ? `désobéissance ${o.desobeissance}` : "désobéissance par défaut";
-console.log(`\n${N} parties · mode ${o.mode}${o.mode === "jev" ? ` · politique ${o.politique} · JEV ${o.jev} (${o.modele}, latence ${latence} s)` : ""} · ${monde} · langue ${langue} · graines ${G0}–${G0 + N - 1} · ${duree.toFixed(1)} s\n`);
+console.log(`\n${N} parties · mode ${o.mode}${o.mode === "jev" ? ` · politique ${o.politique}${calibrateur ? " (calibration hors échantillon)" : ""} · JEV ${o.jev} (${o.modele}, latence ${latence} s)` : ""} · ${monde} · langue ${langue} · graines ${G0}–${G0 + N - 1} · ${duree.toFixed(1)} s\n`);
 console.log("Indicateur".padEnd(26) + "moy./partie".padStart(12) + "± IC95".padStart(9) + "total".padStart(8) + "max".padStart(6));
 for (const [k, nom] of lignes) {
   const s = stats[k];
@@ -90,5 +108,10 @@ if (o.mode === "jev") console.log(`Requêtes JEV simulées : ${appels} (${(appel
 const ok = stats.humains_tues.total === 0;
 console.log(ok ? "✅ 0 humain abattu" : "❌ des humains ont été abattus");
 
+if (o.lectures) {
+  writeFileSync(o.lectures, JSON.stringify({ modele: o.modele, jev: o.jev, politique: o.politique, parties: N, graine: G0,
+    lectures: [...lectures.values()] }, null, 1));
+  console.log(`Lectures JEV : ${lectures.size} fiches distinctes → ${o.lectures}`);
+}
 if (o.json) writeFileSync(o.json, JSON.stringify({ options: o, duree, stats, score_moyen: scoreMoy, parties }, null, 1));
 process.exit(ok || o.mode !== "jev" ? 0 : 1);

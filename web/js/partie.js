@@ -8,6 +8,7 @@ import { nouvellePiste, majStatuts, doitSommer, choisirCible, ligneDegagee } fro
 import { suivreCinematique } from "./analysis/cinematique.js";
 import { doitRecharger, eligiblesV4 } from "./policy/ordonnancement.js";
 import { fusionner } from "./analysis/fusion.js";
+import { creerCalibrateur } from "./analysis/calibration.js";
 import { aResommer, eligiblesV3, statutSPRT } from "./policy/sprt.js";
 import { botNaif } from "./policy/bot.js";
 import { pointVise, orienter, relacher } from "./response/visee.js";
@@ -15,9 +16,21 @@ import { pointVise, orienter, relacher } from "./response/visee.js";
 export const AUTEURS = { jev: "JEV v2", jev1: "JEV v1", regle: "BOT", manuel: "TOI" };
 
 // monde : options du monde simulé (ex. { desobeissance: 0 } pour le monde v2.2)
-export function creerPartie(mode, graine, seuil, { politique = POLITIQUE_DEFAUT, monde = {} } = {}) {
+// calibrateur : v5 uniquement (par défaut celui de analysis/calibration_jev.js ; le benchmark peut en fournir un autre)
+export function creerPartie(mode, graine, seuil, { politique = POLITIQUE_DEFAUT, monde = {}, calibrateur = null } = {}) {
   return { mode, graine, seuil, politique, monde: new Monde(creerRng(graine), monde), pistes: new Map(), cibleId: null,
-           tourelle: { yaw: 0, pitch: 0 } };
+           tourelle: { yaw: 0, pitch: 0 }, calibrateur: politique === "v5" ? calibrateur ?? creerCalibrateur() : null,
+           derive: null };
+}
+
+// Dérive : la calibration ne vaut que pour le modèle sur lequel elle a été apprise. Si JEV en sert un autre,
+// on revient aux probabilités brutes (comportement v4) et on le signale : jamais de calibration hors de son domaine.
+function verifierDerive(p, analyseur) {
+  const servi = analyseur?.modeleServi;
+  if (!p.calibrateur || !servi || servi === p.calibrateur.modele) return;
+  p.derive = { attendu: p.calibrateur.modele, servi };
+  p.calibrateur = null;
+  p.monde.emettre("derive", p.derive);
 }
 
 // Événements du monde → pistes d'analyse ; la piste est jointe aux événements que le journal doit enregistrer
@@ -44,11 +57,13 @@ function protocole(p, tous, vis, analyseur, langue) {
 
 // ---- v3 : preuves fusionnées (JEV + cinématique) + SPRT + escalade (2e sommation) ----
 // ---- v4 : v3 + ordonnancement des tirs par coût + rechargement tactique ----
+// ---- v5 : v4 + lectures JEV calibrées (phase 5) ----
 function protocoleV3(p, tous, vis, analyseur, langue) {
-  const m = p.monde, v4 = p.politique === "v4";
+  const m = p.monde, v4 = p.politique === "v4" || p.politique === "v5";
+  verifierDerive(p, analyseur);
   for (const o of tous) {
     const piste = p.pistes.get(o.id);
-    suivreCinematique(piste, o, m.t); fusionner(piste); piste.statut = statutSPRT(piste);
+    suivreCinematique(piste, o, m.t); fusionner(piste, p.calibrateur); piste.statut = statutSPRT(piste);
   }
   const aAnalyser = vis.filter(c => p.pistes.get(c.id).besoinAnalyse);
   if (aAnalyser.length && !analyseur.occupe) analyseur.classer(aAnalyser, p.pistes, langue);

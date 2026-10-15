@@ -158,11 +158,15 @@ class ClientJEV:
         latence = round((time.perf_counter() - t0) * 1000)
         tokens = (rep.get("usage") or {}).get("input_tokens") or 0
         self.budget.compter_tokens(int(tokens))
-        if self.cache and "error" not in rep:
+        # dérive (contrôle passif) : un autre modèle que celui demandé ne doit jamais entrer dans le cache
+        derive = not self.fake and "error" not in rep and rep.get("model") != payload["model"]
+        if derive:
+            print(f"⚠ dérive JEV : modèle servi {rep.get('model')} ≠ {payload['model']} (réponse non mise en cache)")
+        if self.cache and "error" not in rep and not derive:
             self.cache.ranger(envoi, rep)
         self.journal.ecrire(modele_demande=payload["model"], modele_servi=rep.get("model"),
                             questions=len(manquantes), cache=len(trouvees), tokens=tokens, latence_ms=latence,
-                            statut=rep.get("error", "ok"), appels_session=self.budget.appels)
+                            statut=rep.get("error", "derive" if derive else "ok"), appels_session=self.budget.appels)
         if "error" not in rep:
             rep["answers"] = {**trouvees, **(rep.get("answers") or {})}
             rep["cache"] = len(trouvees)
