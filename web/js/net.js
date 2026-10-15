@@ -1,7 +1,7 @@
 // Appels au serveur local : jeton de session (protection CSRF) + délai max (le cerveau ne gèle jamais)
 import { DELAI_JEV_MS } from "./config.js";
 
-const JETON = document.querySelector('meta[name="jeton-session"]')?.content ?? "";
+export const JETON = document.querySelector('meta[name="jeton-session"]')?.content ?? "";
 
 export async function postJSON(url, corps, delaiMs = DELAI_JEV_MS) {
   const ctrl = new AbortController(), minuteur = setTimeout(() => ctrl.abort(), delaiMs);

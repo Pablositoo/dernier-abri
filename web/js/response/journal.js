@@ -5,7 +5,7 @@ import { estZombie, score } from "../sim/monde.js";
 import { decrire, reactionTexte } from "../perception/observer.js";
 
 // « jev-v3 » / « jev-v2 » dans la colonne mode : distingue les politiques sans changer les colonnes des CSV
-const modeJournal = p => p.mode === "jev" ? `jev-${p.politique}` : p.mode;
+const modeJournal = p => p.mode === "jev" ? `jev-${p.pilote ?? p.politique}` : p.mode;
 
 // une ligne par cible (decisions_jev.csv), modes JEV seulement
 export function journalDecision(partie, e, piste, issue, langue) {

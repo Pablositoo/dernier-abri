@@ -81,31 +81,61 @@ function viser(p, vis, tous, regles) {
 }
 
 /**
- * Avance la partie d'un pas de temps simulé.
+ * Avance la partie d'un pas de temps simulé = avancer → décider → exécuter.
  * analyseur : null (pas de JEV) ou { occupe, classer(liste, pistes, langue), choisir(partie, liste, langue), tic?(t) }
  * → liste des événements du pas (pour le rendu, le HUD et le journal)
+ * Avec un pilote distant (noyau Python, phase 6), « décider » est remplacé par appliquerDecision (voir analysis/vigie.js).
  */
 export function pasPartie(p, dt, { analyseur = null, langue = "fr" } = {}) {
+  const ctx = avancerPartie(p, dt, { analyseur, langue });
+  deciderLocal(p, ctx, { analyseur, langue });
+  return executerPartie(p, dt, ctx, { langue });
+}
+
+// 1. le monde avance, les événements créent / mettent à jour les pistes, on observe
+export function avancerPartie(p, dt, { analyseur = null, langue = "fr" } = {}) {
   const m = p.monde, sortie = [];
   m.pas(dt);
   recolter(p, sortie);
   analyseur?.tic?.(m.t);                                  // headless : livre les réponses dont la latence simulée est écoulée
   if (p.cibleId && !m.vivante(p.cibleId)) p.cibleId = null;
-
   const tous = observerTous(m, langue), vis = visibles(tous);
+  return { sortie, tous, vis };
+}
+
+// 2. décision locale (JEV v2…v5, JEV v1, bot)
+export function deciderLocal(p, { tous, vis }, { analyseur = null, langue = "fr" } = {}) {
   if (p.mode === "jev" && analyseur) (p.politique === "v2" ? protocole : protocoleV3)(p, tous, vis, analyseur, langue);
   if (p.mode === "jev1" && analyseur && !analyseur.occupe && vis.length) analyseur.choisir(p, vis, langue);
   if (p.mode === "regle" && !p.cibleId) p.cibleId = botNaif(vis)?.id ?? null;
+}
 
-  // visée automatique (JEV / bot) : la tourelle tourne vers la cible puis tire
+// 2 bis. décision venue du noyau : mêmes effets, dans le même ordre que protocoleV3
+export function appliquerDecision(p, d) {
+  const m = p.monde;
+  for (const [id, etat] of Object.entries(d.pistes ?? {})) { const pi = p.pistes.get(id); if (pi) Object.assign(pi, etat); }
+  if (d.derive && !p.derive) { p.derive = d.derive; m.emettre("derive", d.derive); }
+  if (d.sommer) m.sommer();
+  if (d.sommerCibles?.length) m.sommerCibles(d.sommerCibles);
+  for (const id of d.bloques ?? []) {
+    const pi = p.pistes.get(id); if (pi) pi.bloque = true;
+    m.stats.tirs_bloques++; m.emettre("bloque", { id });
+  }
+  p.cibleId = d.cible && m.vivante(d.cible) ? d.cible : null;
+  if (d.recharger && !p.cibleId) m.recharger();
+}
+
+// 3. visée automatique (JEV / bot) : la tourelle tourne vers la cible puis tire ; fin de partie
+export function executerPartie(p, dt, { sortie }, { langue = "fr" } = {}) {
+  const m = p.monde;
   if (p.mode !== "manuel") {
     const e = p.cibleId && m.entite(p.cibleId);
     if (e) {
       if (orienter(p.tourelle, pointVise(e, p.mode === "jev"), dt) && m.peutTirer()) {
-        // verrou de sécurité au moment du tir : ligne de tir revérifiée sur des observations fraîches
+        // verrou de sécurité au moment du tir : ligne de tir revérifiée sur des observations fraîches (même piloté à distance)
         if (p.mode === "jev" && !ligneDegagee(observer(e, langue), observerTous(m, langue), p.pistes)) { m.stats.tirs_annules++; p.cibleId = null; }
         else {
-          m.tirer(e, m.rouleauTouche(e), p.mode === "jev" ? `JEV ${p.politique}` : AUTEURS[p.mode]);
+          m.tirer(e, m.rouleauTouche(e), p.mode === "jev" ? `JEV ${p.pilote ?? p.politique}` : AUTEURS[p.mode]);
           if (!e.vivant || p.mode === "regle") p.cibleId = null;
         }
       }

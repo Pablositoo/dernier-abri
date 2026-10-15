@@ -3,7 +3,9 @@ import * as THREE from "three";
 import { DT_REEL_MAX, PAS_SIM, POLITIQUE_DEFAUT, SEUIL_DEFAUT } from "./config.js";
 import { creerRng, graineAleatoire } from "./sim/rng.js";
 import { estZombie } from "./sim/monde.js";
-import { AUTEURS, creerPartie, pasPartie } from "./partie.js";
+import { AUTEURS, appliquerDecision, avancerPartie, creerPartie, executerPartie, pasPartie } from "./partie.js";
+import { JETON } from "./net.js";
+import { creerPiloteVigie, etatPourVigie } from "./analysis/vigie.js";
 import { decrire, observerTous, visibles } from "./perception/observer.js";
 import { analyseurJEV, etatJEV, reinitialiserJEV } from "./analysis/jev.js";
 import { journalDecision, journalPartie } from "./response/journal.js";
@@ -21,13 +23,14 @@ const LITE = PARAMS.has("lite");                                     // ?lite = 
 const SPEED = +PARAMS.get("speed") || 1;                             // ?speed=8 : accéléré (tests)
 const GRAINE = PARAMS.has("seed") ? (+PARAMS.get("seed") >>> 0) : null;   // ?seed=42 : partie reproductible
 const POLITIQUE = ["v2", "v3", "v4", "v5"].includes(PARAMS.get("politique")) ? PARAMS.get("politique") : POLITIQUE_DEFAUT;  // ?politique=v2…v5 : comparaison
+const PILOTE_VIGIE = PARAMS.get("pilote") === "vigie";             // ?pilote=vigie : décisions du noyau Python (phase 6)
 const rngRendu = creerRng(graineAleatoire());                       // hasard visuel : n'influence jamais la partie
 
 const { renderer, scene, camera, lampadaires, dust } = creerScene(rngRendu, LITE);
 const arme = creerArme(camera);
 const effets = creerEffets(scene);
 const vues = new Map();                                             // id → VuePerso
-let partie = null, seuil = SEUIL_DEFAUT.jev, cfg = { jev: false }, accu = 0, recul = 0, shake = 0;
+let partie = null, seuil = SEUIL_DEFAUT.jev, cfg = { jev: false }, accu = 0, recul = 0, shake = 0, pilote = null;
 
 // ================= Partie =================
 function nouvellePartie(mode) {
@@ -36,6 +39,11 @@ function nouvellePartie(mode) {
   if (mode === "jev" && seuil < .6) seuil = SEUIL_DEFAUT.jev;
   const graine = GRAINE ?? graineAleatoire();
   partie = creerPartie(mode, graine, seuil, { politique: POLITIQUE }); accu = 0;
+  pilote?.fermer(); pilote = null;
+  if (PILOTE_VIGIE && mode === "jev") {   // le noyau Python décide ; tant qu'il n'a rien dit : aucun tir
+    partie.pilote = "vigie";
+    pilote = creerPiloteVigie({ jeton: JETON, surEtat: pl => { etatJEV.err = pl.erreur; } });
+  }
   console.info(`Partie ${mode} · politique ${POLITIQUE} · graine ${graine} (la rejouer : ?seed=${graine})`);
   reinitialiserJEV(); $("feed").innerHTML = "";
   $("start").classList.add("hidden"); $("end").classList.add("hidden");
@@ -112,9 +120,9 @@ addEventListener("mousedown", () => {
 });
 // libellé du mode et règles affichées selon la politique (v2 seuil fixe / v3 SPRT)
 function afficherMode() {
-  if (partie) $("mode").textContent = partie.mode === "jev" ? `${tr().modes.jev} ${partie.politique}` : tr().modes[partie.mode];
+  if (partie) $("mode").textContent = partie.mode === "jev" ? `${tr().modes.jev} ${partie.pilote ?? partie.politique}` : tr().modes[partie.mode];
   $("rules").innerHTML = { v2: tr().regles, v3: tr().reglesV3, v4: tr().reglesV3 + tr().reglesV4,
-    v5: tr().reglesV3 + tr().reglesV4 + tr().reglesV5 }[POLITIQUE];
+    v5: tr().reglesV3 + tr().reglesV4 + tr().reglesV5 }[POLITIQUE] + (PILOTE_VIGIE ? tr().reglesVigie : "");
 }
 function changerLangue(l) { appliquerLangue(l); afficherMode(); }
 addEventListener("keydown", e => {
@@ -143,7 +151,15 @@ function frame() {
   if (partie && !partie.monde.fini) {
     const opts = { analyseur: cfg.jev ? analyseurJEV : null, langue: langue() };
     accu += dt;
-    while (accu >= PAS_SIM && !partie.monde.fini) { surEvenements(pasPartie(partie, PAS_SIM, opts)); accu -= PAS_SIM; }
+    while (accu >= PAS_SIM && !partie.monde.fini) {
+      if (pilote) {                     // avancer → décision du noyau (la dernière reçue) → exécuter
+        const ctx = avancerPartie(partie, PAS_SIM, opts), d = pilote.prendre();
+        if (d) appliquerDecision(partie, d);
+        pilote.envoyer(etatPourVigie(partie, ctx.tous, ctx.vis, opts.langue));
+        surEvenements(executerPartie(partie, PAS_SIM, ctx, opts));
+      } else surEvenements(pasPartie(partie, PAS_SIM, opts));
+      accu -= PAS_SIM;
+    }
     const vis = visibles(observerTous(partie.monde, opts.langue));
     const p = partie.mode === "manuel" && viseSous();
     $("tip").style.display = p ? "block" : "none";

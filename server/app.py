@@ -8,6 +8,8 @@ Protections (phase 0) :
   - Host = localhost/127.0.0.1 sur toutes les requêtes (DNS rebinding)
   - POST : Origin locale + Content-Type JSON + jeton de session injecté dans la page (CSRF)
   - taille max des requêtes, JSON validé, budget d'appels JEV, CSV en liste blanche
+  - WebSocket /vigie (phase 6, le jeu piloté par le noyau) : Host local, Origin locale si présente,
+    jeton de session dans le 1er message ; JEV est appelé côté serveur (la clé ne sort jamais d'ici)
 """
 from __future__ import annotations
 
@@ -25,6 +27,7 @@ from urllib.parse import urlsplit
 from .cache_jev import CacheJEV
 from .jev_client import MODELE_JEV, Budget, ClientJEV, JournalAppels
 from .storage import COLONNES, JournalCSV
+from .websocket import ConnexionWS, FermetureWS, cle_acceptation
 
 ROOT = Path(__file__).resolve().parent.parent
 TAILLE_MAX = 64 * 1024
@@ -47,6 +50,7 @@ class Contexte:
     csv: JournalCSV
     jeton: str
     web: Path
+    donnees: Path = ROOT
     hotes: frozenset[str] = frozenset()
     origines: frozenset[str] = frozenset()
 
@@ -100,6 +104,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(200, {"jev": bool(self.ctx.jev.cle) or self.ctx.jev.fake, "fake": self.ctx.jev.fake})
         if chemin in ("/", "/index.html"):
             return self._page()
+        if chemin == "/vigie":
+            return self._vigie()
         return super().do_GET()
 
     def do_HEAD(self):
@@ -117,6 +123,51 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+    # ---------- WebSocket /vigie : le noyau Python décide, le jeu exécute ----------
+    def _vigie(self):
+        from vigie.jeu import SessionJeu
+        from vigie.noyau import JournalRepondeur
+
+        origine = self.headers.get("Origin")
+        if origine is not None and origine not in self.ctx.origines:
+            return self._refuser(403, "origine non autorisée")
+        cle_ws = self.headers.get("Sec-WebSocket-Key")
+        if self.headers.get("Upgrade", "").lower() != "websocket" or not cle_ws or self.headers.get("Sec-WebSocket-Version") != "13":
+            return self._refuser(400, "WebSocket attendu")
+        self.protocol_version = "HTTP/1.1"
+        self.send_response(101, "Switching Protocols")
+        self.send_header("Upgrade", "websocket")
+        self.send_header("Connection", "Upgrade")
+        self.send_header("Sec-WebSocket-Accept", cle_acceptation(cle_ws))
+        self.end_headers()
+        self.close_connection = True
+        ws = ConnexionWS(self.rfile, self.wfile)
+        try:
+            self.connection.settimeout(5)
+            bonjour = ws.recevoir()
+            if bonjour.get("type") != "bonjour" or not hmac.compare_digest(str(bonjour.get("jeton", "")).encode(),
+                                                                          self.ctx.jeton.encode()):
+                print("⛔ /vigie refusé : jeton de session invalide")
+                return ws.fermer(1008, "jeton invalide")
+            # simulation (benchmark, tests) : réponses JEV livrées après une latence fixe d'horloge simulée
+            sim = bonjour.get("simulation")
+            latence = min(5.0, max(0.0, float(sim.get("latence", 0)))) if isinstance(sim, dict) else 0.0
+            session = SessionJeu(client=self.ctx.jev.traiter, synchrone=isinstance(sim, dict), latence=latence,
+                                 journal=JournalRepondeur(self.ctx.donnees / "vigie_decisions.jsonl"))
+            ws.envoyer({"type": "pret", "calibration": session.calibrateur.modele if session.calibrateur else None})
+            self.connection.settimeout(120)
+            while True:
+                msg = ws.recevoir()
+                if msg.get("type") == "etat":
+                    if len(msg.get("observations", [])) > 100:
+                        return ws.fermer(1009, "trop d'observations")
+                    ws.envoyer(session.traiter(msg))
+        except FermetureWS:
+            pass
+        except (OSError, ValueError, KeyError, TypeError) as e:   # message mal formé, délai dépassé, onglet fermé
+            print(f"⛔ /vigie fermé : {type(e).__name__}")
+            ws.fermer(1003, "message invalide")
 
     # ---------- POST ----------
     def do_POST(self):
@@ -169,7 +220,8 @@ def creer_serveur(port: int = 8000, *, cle: str | None, fake: bool, budget: Budg
     if ouvrir is not None:
         jev.ouvrir = ouvrir
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    srv.ctx = Contexte(jev=jev, csv=JournalCSV(dossier_donnees), jeton=secrets.token_urlsafe(32), web=web)
+    srv.ctx = Contexte(jev=jev, csv=JournalCSV(dossier_donnees), jeton=secrets.token_urlsafe(32), web=web,
+                       donnees=dossier_donnees)
     srv.ctx.autoriser_port(srv.server_address[1])
     return srv
 

@@ -35,7 +35,9 @@ web/
   js/ui/           HUD, i18n (FR/EN : textes UI ET questions envoyées à JEV)
   js/config.js     toutes les constantes réglables (seuils, coûts, portées)
 analyse/           (phase 5) calibration de JEV : calibration.py + notebook (numpy, scikit-learn, matplotlib — hors serveur)
-vigie/             (phase 6) noyau générique Python : Source / Analyzer / Policy / Responder
+vigie/             (phase 6) noyau générique Python (stdlib) : types, fusion+SPRT, analyseurs JEV/cinématique,
+                   noyau (répondeurs + règle monde réel), jeu.py (politique v5 portée, pilotée par WebSocket /vigie)
+server/websocket.py  WebSocket RFC 6455 minimal (stdlib) pour /vigie
 tests/             tests unitaires + simulateur headless
 ```
 
@@ -60,7 +62,7 @@ python3 server.py --help          # --modele (défaut jev-1.13.0), --par-minute 
 ```
 En `--fake`, les CSV et `jev_appels.jsonl` vont dans `donnees_fake/` (les vraies données restent propres).
 Sécurité du proxy : Host local obligatoire, POST = Origin locale + `Content-Type: application/json` + en-tête `X-Jeton-Session` (jeton injecté dans `index.html` au chargement). Le client passe toujours par `postJSON()`.
-Paramètres d'URL : `?lite` (PC lent), `?speed=8` (accéléré, tests), `?seed=42` (phase 1, reproductible).
+Paramètres d'URL : `?lite` (PC lent), `?speed=8` (accéléré, tests), `?seed=42` (phase 1, reproductible), `?pilote=vigie` (phase 6 : décisions du noyau Python).
 
 ## Tests
 ```bash
@@ -84,6 +86,10 @@ python3 -m analyse.calibration              # métriques, analyse/fiabilite_jev.
 node tests/bench.mjs --politique v5 --calibration-cv bench_resultats/calibration_cv.json     # v5 HORS échantillon
 python3 -m server.derive --dry-run          # puis sans --dry-run : 12 canaris = 2 appels réels ; sortie 1 si dérive
 python3 -m analyse.bruit_jev --dry-run      # étude du bruit (≈ 80 appels) ; --analyser = relire sans appel
+
+# Noyau vigie (phase 6) : parité partie par partie avec la v5 JS (serveur lancé, réponses JEV du cache)
+python3 server.py --no-browser --port 8766 &
+node tests/vigie_parite.mjs --port 8766 --parties 50 --langue en   # --desobeissance 0.5 pour le stress
 ```
 Cache JEV : `cache_jev.json` (ignoré par git), clé = sha256(modèle + state + question), identique en Python (`server/cache_jev.py`) et en JS (`tests/bench_lib.mjs`). Les questions ne contiennent ni id ni distance, et `state` = {langue, contexte} : même fiche ⇒ même question ⇒ 80 questions possibles en tout.
 
@@ -116,6 +122,9 @@ Comparaison appariée v4 − v3 sur 2 000 graines : morsures −0,13 ± 0,08 (EN
 - **Dérive** : passive (modèle servi ≠ demandé ⇒ alerte, jamais en cache, v5 repasse en brut + bandeau) ; active (`server.derive`, 12 canaris appariés, |Δp| ≤ 0,15, décalage moyen ≤ 0,05).
 - **Bruit de JEV** (`python3 -m analyse.bruit_jev`, 80 appels, 68 000 tokens ≈ 0,003 €) : JEV n'est pas parfaitement déterministe, mais le bruit est faible — écart-type par question 0,010 en moyenne (0,038 max), écart-type de pZ ≤ 0,018 ; mêmes lots ou lots mélangés : pareil (pas d'effet de contexte). Fiche critique EN blesse_humain_1_d : p ∈ [0,660 ; 0,705], la valeur en cache est le pire tirage → marge sur le pire tirage observé : brut 0,22, v5 0,81 ; aucun zombie ralenti. Seuils de dérive recalés sur ces mesures.
 
+**Noyau vigie (phase 6)** : `/vigie` (WebSocket, même port) — Host local, Origin locale si présente, jeton de session dans le 1er message ; JEV appelé côté serveur (même cache, même budget). Le jeu envoie des observations (jamais `nature`) et applique la décision ; il garde la visée et le **verrou de ligne de tir au moment du tir** (un ordre du noyau ne peut pas le contourner, testé). `vigie/noyau.py` refuse au démarrage tout répondeur non informatif sur une source `reel=True`. Journal : `vigie_decisions.jsonl` (actions et changements de cible, avec la raison et les preuves).
+Parité : 130 parties (50 EN, 50 FR, 30 EN à 50 % de désobéissance) jouées par le noyau Python = **identiques** à la v5 JS, 0 humain abattu, 13 600 requêtes JEV toutes servies par le cache (0 token). Dans le navigateur (temps réel, décision avec ~1 pas de retard), le verrou local a annulé 2 tirs sur une partie : il sert vraiment.
+
 Sécurité prouvée par le pire cas (`tests/js/v3.test.mjs`, `v5.test.mjs`) : aucune fiche humaine réelle n'atteint le seuil de tir, même si l'humain désobéit 2 fois. Marge minimale 0,22 (EN, humain blessé désobéissant, JEV p = 0,705) : à surveiller si JEV change de version.
 **Critères d'acceptation** (benchmark, 500 parties) : humains abattus = 0 ; morsures moyennes en baisse par rapport à la base v2.2 ; aucune régression de latence.
 
@@ -126,7 +135,7 @@ Sécurité prouvée par le pire cas (`tests/js/v3.test.mjs`, `v5.test.mjs`) : au
 - [x] 3. Fusion bayésienne + SPRT + analyseur cinématique + 2ᵉ sommation
 - [x] 4. Politique par coût + ordonnancement + vérification de la ligne de tir au moment du tir
 - [x] 5. Calibration (fiabilité, isotonique, dérive)
-- [ ] 6. Noyau générique `vigie/` + `GameSource` (WebSocket)
+- [x] 6. Noyau générique `vigie/` + `GameSource` (WebSocket)
 - [ ] 7. Connecteurs réels (logs, métriques, caméra RTSP en alerte et enregistrement uniquement)
 
 **Ne pas démarrer une phase sans validation explicite de Pablo.**
