@@ -2,10 +2,11 @@
 // Sans Three.js ni DOM : le même code tourne dans le navigateur et dans le simulateur headless (Node).
 import { creerRng } from "./sim/rng.js";
 import { Monde } from "./sim/monde.js";
-import { observerTous, visibles } from "./perception/observer.js";
+import { observer, observerTous, visibles } from "./perception/observer.js";
 import { POLITIQUE_DEFAUT } from "./config.js";
-import { nouvellePiste, majStatuts, doitSommer, choisirCible } from "./policy/regles.js";
+import { nouvellePiste, majStatuts, doitSommer, choisirCible, ligneDegagee } from "./policy/regles.js";
 import { suivreCinematique } from "./analysis/cinematique.js";
+import { doitRecharger, eligiblesV4 } from "./policy/ordonnancement.js";
 import { fusionner } from "./analysis/fusion.js";
 import { aResommer, eligiblesV3, statutSPRT } from "./policy/sprt.js";
 import { botNaif } from "./policy/bot.js";
@@ -42,8 +43,9 @@ function protocole(p, tous, vis, analyseur, langue) {
 }
 
 // ---- v3 : preuves fusionnées (JEV + cinématique) + SPRT + escalade (2e sommation) ----
+// ---- v4 : v3 + ordonnancement des tirs par coût + rechargement tactique ----
 function protocoleV3(p, tous, vis, analyseur, langue) {
-  const m = p.monde;
+  const m = p.monde, v4 = p.politique === "v4";
   for (const o of tous) {
     const piste = p.pistes.get(o.id);
     suivreCinematique(piste, o, m.t); fusionner(piste); piste.statut = statutSPRT(piste);
@@ -53,7 +55,8 @@ function protocoleV3(p, tous, vis, analyseur, langue) {
   if (doitSommer(m.t, m.derniereSommation, tous, p.pistes)) m.sommer();
   const aEscalader = aResommer(vis, p.pistes);
   if (aEscalader.length) m.sommerCibles(aEscalader);
-  viser(p, vis, tous, eligiblesV3);
+  viser(p, vis, tous, v4 ? eligiblesV4 : eligiblesV3);
+  if (v4 && !p.cibleId && doitRecharger(m, vis, p.pistes)) m.recharger();
 }
 
 function viser(p, vis, tous, regles) {
@@ -75,7 +78,7 @@ export function pasPartie(p, dt, { analyseur = null, langue = "fr" } = {}) {
   if (p.cibleId && !m.vivante(p.cibleId)) p.cibleId = null;
 
   const tous = observerTous(m, langue), vis = visibles(tous);
-  if (p.mode === "jev" && analyseur) (p.politique === "v3" ? protocoleV3 : protocole)(p, tous, vis, analyseur, langue);
+  if (p.mode === "jev" && analyseur) (p.politique === "v2" ? protocole : protocoleV3)(p, tous, vis, analyseur, langue);
   if (p.mode === "jev1" && analyseur && !analyseur.occupe && vis.length) analyseur.choisir(p, vis, langue);
   if (p.mode === "regle" && !p.cibleId) p.cibleId = botNaif(vis)?.id ?? null;
 
@@ -84,8 +87,12 @@ export function pasPartie(p, dt, { analyseur = null, langue = "fr" } = {}) {
     const e = p.cibleId && m.entite(p.cibleId);
     if (e) {
       if (orienter(p.tourelle, pointVise(e, p.mode === "jev"), dt) && m.peutTirer()) {
-        m.tirer(e, m.rouleauTouche(e), p.mode === "jev" ? `JEV ${p.politique}` : AUTEURS[p.mode]);
-        if (!e.vivant || p.mode === "regle") p.cibleId = null;
+        // verrou de sécurité au moment du tir : ligne de tir revérifiée sur des observations fraîches
+        if (p.mode === "jev" && !ligneDegagee(observer(e, langue), observerTous(m, langue), p.pistes)) { m.stats.tirs_annules++; p.cibleId = null; }
+        else {
+          m.tirer(e, m.rouleauTouche(e), p.mode === "jev" ? `JEV ${p.politique}` : AUTEURS[p.mode]);
+          if (!e.vivant || p.mode === "regle") p.cibleId = null;
+        }
       }
     } else relacher(p.tourelle, dt);
   }

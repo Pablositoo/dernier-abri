@@ -13,8 +13,13 @@ export function statutSPRT(piste) {
   return piste.L >= SEUIL_A ? "zombie" : piste.L <= SEUIL_B ? "humain" : "incertain";
 }
 
+export const tirRaisonnable = c => chanceTouche(c.distance) >= .5 || c.distance < 15;   // R5
+
 // Règles d'engagement v3 (TOUTES obligatoires) :
-export function eligiblesV3(vis, pistes) {
+export const eligiblesV3 = (vis, pistes) => confirmesV3(vis, pistes).filter(tirRaisonnable);
+
+// Cibles confirmées : toutes les règles sauf R5 (la distance de tir est décidée par l'ordonnancement en v4)
+export function confirmesV3(vis, pistes) {
   return vis.filter(c => {
     const p = pistes.get(c.id);
     return p &&
@@ -22,8 +27,7 @@ export function eligiblesV3(vis, pistes) {
       p.preuves.jev > 0 && p.incoh <= INCOH_MAX &&          // S2 concordance : JEV (cohérent) penche zombie…
       p.preuves.cine > 0 &&                                 //    … ET le mouvement aussi (2 sources indépendantes)
       p.lueAvecReaction &&                                  // R3 JEV a lu la réaction à la sommation
-      !c.arrete &&                                          // R4 une silhouette arrêtée mains en l'air n'est jamais une cible
-      (chanceTouche(c.distance) >= .5 || c.distance < 15);  // R5 tir raisonnable
+      !c.arrete;                                            // R4 une silhouette arrêtée mains en l'air n'est jamais une cible
   });
 }
 

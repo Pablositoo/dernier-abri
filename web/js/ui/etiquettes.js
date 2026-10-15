@@ -18,7 +18,7 @@ export function majEtiquettes(partie, vues, camera, vis) {
       const p = partie.pistes.get(e.id);
       tag.classList.toggle("z", p.statut === "zombie"); tag.classList.toggle("h", p.statut === "humain");
       tag.classList.toggle("u", p.statut === "incertain" || p.statut === "analyse");
-      const pz = partie.politique === "v3" ? (p.statut === "analyse" ? null : p.pPost) : p.pZ;
+      const pz = partie.politique !== "v2" ? (p.statut === "analyse" ? null : p.pPost) : p.pZ;
       tag.textContent = e.id + (pz == null ? " …" : ` ${Math.round(pz * 100)}%`);
     }
   }

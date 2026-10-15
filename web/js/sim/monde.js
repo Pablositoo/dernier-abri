@@ -46,7 +46,7 @@ export class Monde {
     this.pv = PV_MAX; this.mun = MUNITIONS; this.rechargeFin = 0; this.dernierTir = -9;
     this.prochainSpawn = 0; this.n = 0; this.derniereSommation = -9;
     this.entites = []; this.parId = new Map(); this.evenements = [];
-    this.stats = { zombies_tues: 0, humains_tues: 0, humains_sauves: 0, morsures: 0, tirs: 0, rates: 0, sommations: 0, tirs_bloques: 0, sommations_ciblees: 0 };
+    this.stats = { zombies_tues: 0, humains_tues: 0, humains_sauves: 0, morsures: 0, tirs: 0, rates: 0, sommations: 0, tirs_bloques: 0, sommations_ciblees: 0, recharges_tactiques: 0, tirs_annules: 0 };
   }
   emettre(type, data = {}) { this.evenements.push({ type, ...data }); }
   vider() { const ev = this.evenements; this.evenements = []; return ev; }
@@ -99,6 +99,9 @@ export class Monde {
     this.emettre("sommation", { cibles: visees.map(e => e.id) });
   }
 
+  recharger() {                       // rechargement volontaire (même durée que le rechargement automatique)
+    if (this.mun < MUNITIONS && this.t >= this.rechargeFin) { this.rechargeFin = this.t + RECHARGE; this.mun = MUNITIONS; this.stats.recharges_tactiques++; }
+  }
   peutTirer() { return this.mun > 0 && this.t >= this.rechargeFin && this.t - this.dernierTir >= CADENCE; }
   rouleauTouche(e) { return this.rng.suivant() < chanceTouche(e.distance); }
   tirer(e, touche, auteur) {

@@ -19,3 +19,4 @@ export function suivreCinematique(piste, o, t) {
     piste.fenetre = null;
   }
 }
+

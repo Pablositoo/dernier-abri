@@ -20,7 +20,7 @@ export const P_OBEIT_2E = 0.7;            // … mais s'arrête à la 2e sommati
 export const MAX_SOMMATIONS = 2;          // 1 sommation générale + 1 sommation ciblée par silhouette
 
 // ---------- Politique (règles d'engagement) ----------
-export const POLITIQUE_DEFAUT = "v3";     // v2 = seuil fixe (v2.2), v3 = fusion bayésienne + SPRT
+export const POLITIQUE_DEFAUT = "v4";     // v2 = seuil fixe (v2.2), v3 = fusion bayésienne + SPRT, v4 = v3 + ordonnancement
 export const SEUIL_DEFAUT = { jev: 0.85, jev1: 0.5 };
 export const INCOH_MAX = 0.15, SEUIL_HUMAIN = 0.25;
 
@@ -36,6 +36,15 @@ export const FUSION = {
   seuilArret: 0.2, seuilBouge: 0.5,       // m : < 0,2 = arrêté, > 0,5 = continue, entre les deux = pas de preuve
   alpha: 0.005,                           // risque visé de tirer sur un humain
   beta: 0.05,                             // risque visé de laisser passer un zombie
+};
+
+// ---------- v4 : ordonnancement des tirs par coût (ne touche ni au SPRT ni à la ligne de tir) ----------
+// Benchmark : 56 % des morsures restantes en v3 = ligne de tir jamais libre (prix de la sécurité, non évitable),
+// 30 % = ligne libre seulement entre 30 et 45 m. Prédire les positions pour « attendre une meilleure occasion »
+// n'apporte rien (de nouveaux humains bloquent la ligne) : la règle simple « tirer dès que c'est libre » gagne.
+export const ORDONNANCEMENT = {
+  porteeOpportunite: 45,                  // m : au-delà de R5 (30 m), tir d'opportunité si la ligne est libre maintenant
+  rechargeTactique: 2,                    // recharge si ≤ 2 balles et aucune cible confirmée à portée
 };
 
 // ---------- Tir / visée ----------

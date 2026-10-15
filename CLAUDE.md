@@ -88,7 +88,7 @@ Cache JEV : `cache_jev.json` (ignoré par git), clé = sha256(modèle + state + 
 
 Cause des morsures EN : « limping, bloodied, doesn't respond when called » finit à p = 0,835 < 0,85 même après la réaction.
 
-**Politique v3 (phase 3, par défaut ; `?politique=v2` pour comparer)** : L = logit(dernière lecture JEV cohérente) + preuves cinématiques (déplacement mesuré entre sommation + 0,5 s et + 2 s) ; SPRT de Wald α = 0,5 % (humain), β = 5 % → tir si L ≥ 5,25 ET JEV et mouvement concordants ; sinon 2e sommation ciblée, jamais de tir dans le doute. Paramètres dans `config.js` (`FUSION`), fixés a priori, pas ajustés sur le benchmark.
+**Politique v3 (phase 3 ; `?politique=v2|v3|v4` pour comparer)** : L = logit(dernière lecture JEV cohérente) + preuves cinématiques (déplacement mesuré entre sommation + 0,5 s et + 2 s) ; SPRT de Wald α = 0,5 % (humain), β = 5 % → tir si L ≥ 5,25 ET JEV et mouvement concordants ; sinon 2e sommation ciblée, jamais de tir dans le doute. Paramètres dans `config.js` (`FUSION`), fixés a priori, pas ajustés sur le benchmark.
 Monde simulé : 5 % d'humains désobéissants (`P_DESOBEISSANCE`, cas piège ; `--desobeissance 0` = monde v2.2).
 
 | 500 parties, `--jev cache` | Humains abattus | Morsures/partie | dont zombies blessés | Score |
@@ -96,6 +96,9 @@ Monde simulé : 5 % d'humains désobéissants (`P_DESOBEISSANCE`, cas piège ; `
 | EN v2 → v3 (désob. 5 %) | 0 → 0 | 4,43 → **1,25** | 2,84 → **0,15** | 757 → 859 |
 | FR v2 → v3 (désob. 5 %) | 0 → 0 | 1,16 → 1,25 (n.s.) | 0,12 → 0,13 | 869 → 861 |
 | EN / FR v3, désob. 50 % (stress) | 0 / 0 (≈ 9 900 désobéissants chacun) | 1,34 / 1,26 | | |
+
+**Politique v4 (phase 4, par défaut)** = v3 + tir d'opportunité jusqu'à 45 m dès que la ligne est libre + rechargement tactique + verrou de ligne de tir au moment du tir. Diagnostic des morsures restantes en v3 (EN) : 56 % = ligne de tir jamais libre une fois le zombie confirmé (prix de la sécurité, non évitable sans risquer des humains), 30 % = libre seulement entre 30 et 45 m, 14 % = exécution. Une prédiction des positions (« attendre une meilleure occasion ») n'apportait rien : supprimée au profit de la règle simple.
+Comparaison appariée v4 − v3 sur 2 000 graines : morsures −0,13 ± 0,08 (EN), −0,12 ± 0,08 (FR) ; score +6 ± 4 ; 0 humain abattu (8 000 parties). Précision 62 % → 55 % (plus de tirs de loin).
 
 Sécurité prouvée par le pire cas (`tests/js/v3.test.mjs`) : aucune fiche humaine réelle n'atteint le seuil de tir, même si l'humain désobéit 2 fois. Marge minimale 0,22 (EN, humain blessé désobéissant, JEV p = 0,705) : à surveiller si JEV change de version.
 **Critères d'acceptation** (benchmark, 500 parties) : humains abattus = 0 ; morsures moyennes en baisse par rapport à la base v2.2 ; aucune régression de latence.
@@ -105,7 +108,7 @@ Sécurité prouvée par le pire cas (`tests/js/v3.test.mjs`) : aucune fiche huma
 - [x] 1. Modulariser `index.html` + RNG seedé + horloge simulée
 - [x] 2. Cache JEV + simulateur headless + benchmark
 - [x] 3. Fusion bayésienne + SPRT + analyseur cinématique + 2ᵉ sommation
-- [ ] 4. Politique par coût + ordonnancement + vérification de la ligne de tir au moment du tir
+- [x] 4. Politique par coût + ordonnancement + vérification de la ligne de tir au moment du tir
 - [ ] 5. Calibration (fiabilité, isotonique, dérive)
 - [ ] 6. Noyau générique `vigie/` + `GameSource` (WebSocket)
 - [ ] 7. Connecteurs réels (logs, métriques, caméra RTSP en alerte et enregistrement uniquement)

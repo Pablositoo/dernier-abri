@@ -22,7 +22,7 @@ const { values: o } = parseArgs({ options: {
   latence: { type: "string", default: "0.25" }, langue: { type: "string", default: "en" },
   seuil: { type: "string" }, modele: { type: "string", default: MODELE_PAR_DEFAUT },
   cache: { type: "string", default: join(RACINE, "cache_jev.json") }, json: { type: "string" },
-  politique: { type: "string", default: "v3" }, desobeissance: { type: "string" },
+  politique: { type: "string", default: "v4" }, desobeissance: { type: "string" },
   "lister-questions": { type: "boolean", default: false },
 } });
 
@@ -72,6 +72,7 @@ const lignes = [
   ["morsures_blesses", "  dont zombies blessés"], ["morsures_valides", "  dont zombies valides"], ["zombies_tues", "Zombies tués"],
   ["humains_sauves", "Humains sauvés"], ["tirs", "Tirs"], ["tirs_bloques", "Tirs bloqués"], ["sommations", "Sommations"],
   ["sommations_ciblees", "2es sommations ciblées"], ["tirs_apres_2e_sommation", "Tués après 2e sommation"],
+  ["recharges_tactiques", "Recharges tactiques"], ["tirs_annules", "Tirs annulés (verrou)"],
 ];
 const stats = Object.fromEntries(lignes.map(([k]) => [k, resume(k)]));
 const scores = parties.map(p => 10 * p.zombies_tues + 15 * p.humains_sauves - 50 * p.humains_tues - 20 * p.morsures);

@@ -49,7 +49,7 @@ export function eligibles(vis, pistes) {
 // regles : eligibles (v2) ou eligiblesV3 ; la plus urgente d'abord
 export function choisirCible(vis, tous, pistes, regles = eligibles) {
   const bloques = [];
-  for (const c of regles(vis, pistes).sort((a, b) => tempsAvantImpact(a) - tempsAvantImpact(b))) {
+  for (const c of regles(vis, pistes, tous).sort((a, b) => tempsAvantImpact(a) - tempsAvantImpact(b))) {
     if (ligneDegagee(c, tous, pistes)) return { cible: c, bloques };
     if (!pistes.get(c.id).bloque) bloques.push(c.id);
   }

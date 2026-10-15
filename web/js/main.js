@@ -20,7 +20,7 @@ const PARAMS = new URLSearchParams(location.search);
 const LITE = PARAMS.has("lite");                                     // ?lite = PC lent
 const SPEED = +PARAMS.get("speed") || 1;                             // ?speed=8 : accéléré (tests)
 const GRAINE = PARAMS.has("seed") ? (+PARAMS.get("seed") >>> 0) : null;   // ?seed=42 : partie reproductible
-const POLITIQUE = PARAMS.get("politique") === "v2" ? "v2" : POLITIQUE_DEFAUT;  // ?politique=v2 : ancienne politique (comparaison)
+const POLITIQUE = ["v2", "v3", "v4"].includes(PARAMS.get("politique")) ? PARAMS.get("politique") : POLITIQUE_DEFAUT;  // ?politique=v2|v3 : comparaison
 const rngRendu = creerRng(graineAleatoire());                       // hasard visuel : n'influence jamais la partie
 
 const { renderer, scene, camera, lampadaires, dust } = creerScene(rngRendu, LITE);
@@ -112,7 +112,7 @@ addEventListener("mousedown", () => {
 // libellé du mode et règles affichées selon la politique (v2 seuil fixe / v3 SPRT)
 function afficherMode() {
   if (partie) $("mode").textContent = partie.mode === "jev" ? `${tr().modes.jev} ${partie.politique}` : tr().modes[partie.mode];
-  $("rules").innerHTML = POLITIQUE === "v3" ? tr().reglesV3 : tr().regles;
+  $("rules").innerHTML = { v2: tr().regles, v3: tr().reglesV3, v4: tr().reglesV3 + tr().reglesV4 }[POLITIQUE];
 }
 function changerLangue(l) { appliquerLangue(l); afficherMode(); }
 addEventListener("keydown", e => {
