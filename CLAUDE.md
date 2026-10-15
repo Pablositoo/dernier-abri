@@ -19,6 +19,8 @@ server/            Python ≥ 3.10, stdlib uniquement (pas de dépendance obliga
   app.py           HTTP : fichiers statiques web/ + POST /jev, /log, /decision
   jev_client.py    appels JEV : timeout 8 s, retries 429/5xx (backoff), cache, budget
   storage.py       écriture CSV sûre (liste blanche de colonnes, échappement = + - @)
+  faux_jev.py      JEV simulé (--fake)
+server.py          lanceur (python3 server.py)
 web/
   index.html       HTML + CSS uniquement
   js/main.js       boucle de jeu et orchestration
@@ -51,17 +53,20 @@ cd jev-zombies-3d
 python3 server.py                 # ouvre http://localhost:8000 (vrai JEV, clé dans .env)
 python3 server.py --fake          # JEV simulé, sans API ni coût
 python3 server.py --no-browser --port 8765
+python3 server.py --help          # --modele (défaut jev-1.13.0), --par-minute 300, --max-appels 1000, --max-tokens, --donnees
 ```
+En `--fake`, les CSV et `jev_appels.jsonl` vont dans `donnees_fake/` (les vraies données restent propres).
+Sécurité du proxy : Host local obligatoire, POST = Origin locale + `Content-Type: application/json` + en-tête `X-Jeton-Session` (jeton injecté dans `index.html` au chargement). Le client passe toujours par `postJSON()`.
 Paramètres d'URL : `?lite` (PC lent), `?speed=8` (accéléré, tests), `?seed=42` (phase 1, reproductible).
 
 ## Tests
 ```bash
 # Fumée navigateur (Chromium headless, JEV simulé) — existant
 python3 server.py --fake --no-browser --port 8765 &
-python3 tests/smoke_playwright.py           # à créer en phase 1
+python3 tests/smoke_playwright.py --mode jev
 
 # Unitaires (à créer)
-python3 -m unittest discover tests          # server/, policy, fusion
+python3 -m unittest discover tests          # proxy (phase 0) ; policy, fusion à venir
 node --test tests/js/                       # modules JS purs (policy, analysis)
 
 # Benchmark headless (phase 2) — critère d'acceptation de toute politique
@@ -70,7 +75,7 @@ python3 -m tests.bench --games 500 --seed 1 --jev cache
 **Critères d'acceptation** (benchmark, 500 parties) : humains abattus = 0 ; morsures moyennes en baisse par rapport à la base v2.2 ; aucune régression de latence.
 
 ## Feuille de route (état)
-- [ ] 0. Sécuriser le proxy (CSRF/Origin, budget, CSV, taille, timeouts client)
+- [x] 0. Sécuriser le proxy (CSRF/Origin, budget, CSV, taille, timeouts client)
 - [ ] 1. Modulariser `index.html` + RNG seedé + horloge simulée
 - [ ] 2. Cache JEV + simulateur headless + benchmark
 - [ ] 3. Fusion bayésienne + SPRT + analyseur cinématique + 2ᵉ sommation

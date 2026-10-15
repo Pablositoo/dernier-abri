@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="jeton-session" content="__JETON_SESSION__">
 <title>Dernier Abri — JEV</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Share+Tech+Mono&display=swap" rel="stylesheet">
@@ -190,6 +191,22 @@ const TXT = {
   },
 };
 const tr = () => TXT[LANG];
+
+// ================= Appels au serveur local =================
+// Jeton de session injecté par le serveur dans la page (protection CSRF) + délai max (le cerveau ne gèle jamais)
+const JETON = document.querySelector('meta[name="jeton-session"]')?.content ?? "";
+const DELAI_JEV_MS = 12000, DELAI_LOG_MS = 5000;
+async function postJSON(url, corps, delaiMs = DELAI_JEV_MS) {
+  const ctrl = new AbortController(), minuteur = setTimeout(() => ctrl.abort(), delaiMs);
+  try {
+    const r = await fetch(url, { method: "POST", signal: ctrl.signal, body: JSON.stringify(corps),
+      headers: { "Content-Type": "application/json", "X-Jeton-Session": JETON } });
+    const rep = await r.json();
+    if (rep.error) throw new Error(rep.detail ? `${rep.error} (${rep.detail})` : rep.error);
+    return rep;
+  } catch (e) { throw e.name === "AbortError" ? new Error(`délai > ${delaiMs / 1000} s`) : e; }
+  finally { clearTimeout(minuteur); }
+}
 function appliquerLangue(l) {
   LANG = l; try { localStorage.setItem("lang", l); } catch {}
   document.documentElement.lang = l;
@@ -512,15 +529,14 @@ async function demanderJEVsimple(cibles) {   // v1 : une seule question « sur q
   const criteria = {};
   for (const c of cibles) criteria[c.id] = tr().v1Crit(c);
   criteria.attendre = tr().v1Wait;
-  const payload = { model: "jev-latest",
+  const payload = {   // le modèle JEV est figé côté serveur
     state: { pv_abri: partie.pv, munitions: partie.mun, rechargement_en_cours: partie.t < partie.rechargeFin,
       cibles: cibles.map(c => ({ id: c.id, description: c.desc, distance_m: Math.round(c.distance), chance_de_toucher: +chanceTouche(c.distance).toFixed(2) })) },
     questions: { action: { type: "choice", criteria,
       instructions: tr().v1Instr } } };
   const mode = partie.mode;
   try {
-    const r = await (await fetch("/jev", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })).json();
-    if (r.error) throw new Error(r.error);
+    const r = await postJSON("/jev", payload);
     if (partie.mode !== mode) return;
     const a = r.answers.action;
     jevStats.appels++; jevStats.tokens += r.usage?.input_tokens || 0; jevStats.lat.push(r.latence_ms); jevStats.err = "";
@@ -545,12 +561,11 @@ async function classerJEV(cibles) {
     questions["h_" + c.id] = { type: "noul", instructions: `${fiche} ${tr().qH}` };
   }
   const avecReaction = new Map(cibles.map(c => [c, !!c.reaction]));   // ce que JEV a VRAIMENT lu
-  const payload = { model: "jev-latest", questions,
+  const payload = { questions,   // le modèle JEV est figé côté serveur
     state: { langue: LANG, contexte: tr().contexte, cibles: cibles.map(c => ({ id: c.id, description: c.desc, distance_m: Math.round(c.distance), reaction_sommation: c.reaction })) } };
   const mode = partie.mode;
   try {
-    const r = await (await fetch("/jev", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })).json();
-    if (r.error) throw new Error(r.error);
+    const r = await postJSON("/jev", payload);
     if (partie.mode !== mode) return;
     jevStats.appels++; jevStats.tokens += r.usage?.input_tokens || 0; jevStats.lat.push(r.latence_ms); jevStats.err = "";
     for (const c of cibles) {
@@ -716,10 +731,10 @@ function tags() {
 
 function journal(p, issue) {
   if (!partie.mode.startsWith("jev")) return;
-  fetch("/decision", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+  postJSON("/decision", {
     mode: partie.mode, langue: LANG, seuil, id: p.id, verite: estZombie(p.nature) ? "zombie" : "humain", nature: p.nature, description: p.desc,
     reaction: p.reaction ?? "", p_zombie_avant_sommation: p.pAvant?.toFixed(3) ?? "", p_zombie_final: p.pZ?.toFixed(3) ?? "",
-    incoherence: p.incoh?.toFixed(3) ?? "", statut_jev: p.statut, issue, distance_m: Math.round(p.distance) }) }).catch(() => {});
+    incoherence: p.incoh?.toFixed(3) ?? "", statut_jev: p.statut, issue, distance_m: Math.round(p.distance) }, DELAI_LOG_MS).catch(() => {});
 }
 
 function finPartie() {
@@ -731,9 +746,9 @@ function finPartie() {
   const cases = tr().stats.map((k, i) => [k, vals[i]]);
   $("endStats").innerHTML = cases.map(([k, v]) => `<div><span class="label">${k}</span><b>${v}</b></div>`).join("");
   $("end").classList.remove("hidden");
-  fetch("/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+  postJSON("/log", {
     mode: partie.mode, langue: LANG, seuil: partie.mode.startsWith("jev") ? seuil : "", score: score(s), ...s, survie_s: Math.round(partie.t),
-    appels_jev: jevStats.appels, latence_moy_ms: l.length ? Math.round(l.reduce((a, b) => a + b, 0) / l.length) : "" }) }).catch(() => {});
+    appels_jev: jevStats.appels, latence_moy_ms: l.length ? Math.round(l.reduce((a, b) => a + b, 0) / l.length) : "" }, DELAI_LOG_MS).catch(() => {});
 }
 
 // ================= Boucle =================

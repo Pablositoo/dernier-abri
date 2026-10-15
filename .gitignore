@@ -2,6 +2,8 @@
 .env
 # données de parties (réelles, locales)
 *.csv
+*.jsonl
+donnees_fake/
 # système / Python
 .DS_Store
 __pycache__/
