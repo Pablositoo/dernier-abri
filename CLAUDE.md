@@ -37,6 +37,8 @@ web/
 analyse/           (phase 5) calibration de JEV : calibration.py + notebook (numpy, scikit-learn, matplotlib — hors serveur)
 vigie/             (phase 6) noyau générique Python (stdlib) : types, fusion+SPRT, analyseurs JEV/cinématique,
                    noyau (répondeurs + règle monde réel), jeu.py (politique v5 portée, pilotée par WebSocket /vigie)
+                   (phase 7) surveillance.py (CUSUM, alertes), sources.py (journaux, log stream macOS, réseau),
+                   repondeurs.py (journal, preuves, notification macOS, webhook), surveiller.py (CLI + démo)
 server/websocket.py  WebSocket RFC 6455 minimal (stdlib) pour /vigie
 tests/             tests unitaires + simulateur headless
 ```
@@ -87,6 +89,11 @@ node tests/bench.mjs --politique v5 --calibration-cv bench_resultats/calibration
 python3 -m server.derive --dry-run          # puis sans --dry-run : 12 canaris = 2 appels réels ; sortie 1 si dérive
 python3 -m analyse.bruit_jev --dry-run      # étude du bruit (≈ 80 appels) ; --analyser = relire sans appel
 
+# Surveillance réelle (phase 7) : alertes uniquement ; sorties dans donnees_vigie/ (ignoré par git)
+python3 -m vigie.surveiller --demo          # faux journal sshd : bruit normal puis force brute réussie → 2 alertes
+python3 -m vigie.surveiller --mac --notif-mac   # vrai journal macOS (sudo, sshd) ; --reseau ; --fichier F
+python3 -m vigie.surveiller --demo --webhook    # + webhook Discord (VIGIE_WEBHOOK_URL dans .env, secret comme la clé)
+
 # Noyau vigie (phase 6) : parité partie par partie avec la v5 JS (serveur lancé, réponses JEV du cache)
 python3 server.py --no-browser --port 8766 &
 node tests/vigie_parite.mjs --port 8766 --parties 50 --langue en   # --desobeissance 0.5 pour le stress
@@ -125,6 +132,12 @@ Comparaison appariée v4 − v3 sur 2 000 graines : morsures −0,13 ± 0,08 (EN
 **Noyau vigie (phase 6)** : `/vigie` (WebSocket, même port) — Host local, Origin locale si présente, jeton de session dans le 1er message ; JEV appelé côté serveur (même cache, même budget). Le jeu envoie des observations (jamais `nature`) et applique la décision ; il garde la visée et le **verrou de ligne de tir au moment du tir** (un ordre du noyau ne peut pas le contourner, testé). `vigie/noyau.py` refuse au démarrage tout répondeur non informatif sur une source `reel=True`. Journal : `vigie_decisions.jsonl` (actions et changements de cible, avec la raison et les preuves).
 Parité : 130 parties (50 EN, 50 FR, 30 EN à 50 % de désobéissance) jouées par le noyau Python = **identiques** à la v5 JS, 0 humain abattu, 13 600 requêtes JEV toutes servies par le cache (0 token). Dans le navigateur (temps réel, décision avec ~1 pas de retard), le verrou local a annulé 2 tirs sur une partie : il sert vraiment.
 
+**Surveillance réelle (phase 7)** : CUSUM (le SPRT du jeu relancé en continu), alerte si L ≥ ln(0,95/0,001) = 6,86 ; une alerte par entité toutes les 5 min.
+- Journaux : taux d'échecs Poisson, normal 1/300 s contre attaque 1/30 s ⇒ alerte au 4e échec rapide ; connexion réussie après ≥ 3 échecs en 10 min ⇒ alerte **critique** (même en sourdine). Motifs : sshd (Failed/Invalid/Accepted), sudo (« N incorrect password attempts »).
+- Réseau : ligne de base EWMA sur log(1 + octets/s) par interface et sens, décalage de 3σ testé ; la base n'apprend pas pendant un pic.
+- Répondeurs tous informatifs (le noyau refuse les autres sur une source réelle). Le texte des journaux est écrit par l'attaquant : mentions Discord désactivées + neutralisées, AppleScript fixe avec le texte en argument, noms de fichiers assainis, lignes envoyées à JEV dans `state` seulement (jamais dans les consignes). URL du webhook : `.env`, jamais affichée (même en cas d'erreur HTTP).
+- JEV (option `--jev`) : avis indicatif sur l'extrait, non calibré pour ce domaine, ne déclenche rien.
+
 Sécurité prouvée par le pire cas (`tests/js/v3.test.mjs`, `v5.test.mjs`) : aucune fiche humaine réelle n'atteint le seuil de tir, même si l'humain désobéit 2 fois. Marge minimale 0,22 (EN, humain blessé désobéissant, JEV p = 0,705) : à surveiller si JEV change de version.
 **Critères d'acceptation** (benchmark, 500 parties) : humains abattus = 0 ; morsures moyennes en baisse par rapport à la base v2.2 ; aucune régression de latence.
 
@@ -136,6 +149,7 @@ Sécurité prouvée par le pire cas (`tests/js/v3.test.mjs`, `v5.test.mjs`) : au
 - [x] 4. Politique par coût + ordonnancement + vérification de la ligne de tir au moment du tir
 - [x] 5. Calibration (fiabilité, isotonique, dérive)
 - [x] 6. Noyau générique `vigie/` + `GameSource` (WebSocket)
-- [ ] 7. Connecteurs réels (logs, métriques, caméra RTSP en alerte et enregistrement uniquement)
+- [x] 7a. Connecteurs réels : journaux (fichier, macOS), métriques réseau, alertes (journal, preuves, notification, webhook)
+- [→] 7b. Caméra et drones : **autre projet** (copier `vigie/` ; webhook : recopier `VIGIE_WEBHOOK_URL` dans son `.env`, de préférence une URL régénérée). Réponses informatives uniquement ; neutraliser un drone est réservé à l'État.
 
 **Ne pas démarrer une phase sans validation explicite de Pablo.**
