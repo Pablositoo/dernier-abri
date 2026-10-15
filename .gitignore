@@ -8,3 +8,6 @@ donnees_fake/
 .DS_Store
 __pycache__/
 .venv/
+cache_jev.json
+cache_jev.tmp
+bench_resultats/

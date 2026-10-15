@@ -22,6 +22,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from .cache_jev import CacheJEV
 from .jev_client import MODELE_JEV, Budget, ClientJEV, JournalAppels
 from .storage import COLONNES, JournalCSV
 
@@ -161,9 +162,9 @@ class Handler(SimpleHTTPRequestHandler):
 
 def creer_serveur(port: int = 8000, *, cle: str | None, fake: bool, budget: Budget | None = None,
                   modele: str = MODELE_JEV, dossier_donnees: Path = ROOT, web: Path = ROOT / "web",
-                  ouvrir=None) -> ThreadingHTTPServer:
+                  ouvrir=None, cache: CacheJEV | None = None) -> ThreadingHTTPServer:
     """Serveur prêt à servir (port=0 : port libre, pour les tests)."""
-    jev = ClientJEV(cle=cle, fake=fake, budget=budget or Budget(), modele=modele,
+    jev = ClientJEV(cle=cle, fake=fake, budget=budget or Budget(), modele=modele, cache=cache,
                     journal=JournalAppels(dossier_donnees / "jev_appels.jsonl"))
     if ouvrir is not None:
         jev.ouvrir = ouvrir
@@ -182,6 +183,7 @@ def main():
     ap.add_argument("--par-minute", type=float, default=300, help="débit max d'appels JEV par minute")
     ap.add_argument("--max-appels", type=int, default=1000, help="plafond d'appels JEV par lancement")
     ap.add_argument("--max-tokens", type=int, default=None, help="plafond de tokens par lancement (aucun par défaut)")
+    ap.add_argument("--sans-cache", action="store_true", help="interroge JEV à chaque fois (pas de cache_jev.json)")
     ap.add_argument("--donnees", type=Path, default=None,
                     help="dossier des CSV et du journal (défaut : le projet ; donnees_fake/ en --fake)")
     args = ap.parse_args()
@@ -192,12 +194,14 @@ def main():
     if not cle and not args.fake:
         print("⚠️  Pas de clé dans .env : seuls les modes Bot et Manuel marcheront (ou lance avec --fake).")
     budget = Budget(par_minute=args.par_minute, max_appels=args.max_appels, max_tokens=args.max_tokens)
-    srv = creer_serveur(args.port, cle=cle, fake=args.fake, budget=budget, modele=args.modele, dossier_donnees=donnees)
+    # cache seulement pour le vrai JEV (le faux JEV est gratuit et volontairement bruité)
+    cache = None if args.fake or args.sans_cache else CacheJEV(ROOT / "cache_jev.json")
+    srv = creer_serveur(args.port, cle=cle, fake=args.fake, budget=budget, modele=args.modele, dossier_donnees=donnees, cache=cache)
     url = f"http://localhost:{args.port}"
     print(f"🧟 Jeu prêt sur {url}   (Ctrl+C pour arrêter)")
     print(f"   JEV : {'simulé' if args.fake else args.modele} · budget {args.par_minute:g}/min, "
           f"{args.max_appels} appels" + (f", {args.max_tokens} tokens" if args.max_tokens else ""))
-    print(f"   Journaux : {donnees}")
+    print(f"   Journaux : {donnees}" + (f" · cache JEV : {len(cache.entrees)} réponses" if cache else ""))
     if not args.no_browser:
         webbrowser.open(url)
     try:

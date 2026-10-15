@@ -19,7 +19,8 @@ export const TXT = {
     tombe: "L'abri est tombé", tenu: "Tu as tenu jusqu'au bout", pasCle: "Pas de clé API", err: "Erreur : ",
     stats: ["Score", "Zombies tués", "Humains sauvés", "Humains abattus", "Morsures", "Précision", "Appels JEV", "Sommations"],
     contexte: "Contexte : un défenseur protège un abri. Une sommation « Stop ! Levez les mains ! » est criée aux silhouettes qui approchent : un survivant humain obéit, un zombie l'ignore.",
-    fiche: (c, r) => `Cible ${c.id}. Description : ${c.desc}. Réaction à la sommation : ${r ?? "sommation pas encore faite"}.`,
+    // sans id ni distance : la réponse ne dépend que de ce qui est observé (cache JEV possible)
+    fiche: (c, r) => `Une silhouette. Description : ${c.desc}. Réaction à la sommation : ${r ?? "sommation pas encore faite"}.`,
     qZ: "Cette cible est un zombie (infecté hostile).", qH: "Cette cible est un survivant humain vivant.",
     v1Crit: c => `Tirer sur ${c.id} : ${c.desc} (${Math.round(c.distance)} m, chance ${Math.round(chanceTouche(c.distance) * 100)} % de toucher)`,
     v1Wait: "Ne pas tirer maintenant (cible humaine, trop loin ou trop incertaine)",
@@ -42,7 +43,7 @@ export const TXT = {
     tombe: "The shelter has fallen", tenu: "You held out to the end", pasCle: "No API key", err: "Error: ",
     stats: ["Score", "Zombies killed", "Humans saved", "Humans shot", "Bites", "Accuracy", "JEV calls", "Warnings"],
     contexte: "Context: a defender protects a shelter. A warning \"Stop! Hands up!\" is shouted at approaching figures: a human survivor obeys, a zombie ignores it.",
-    fiche: (c, r) => `Target ${c.id}. Description: ${c.desc}. Reaction to the warning: ${r ?? "no warning given yet"}.`,
+    fiche: (c, r) => `A figure. Description: ${c.desc}. Reaction to the warning: ${r ?? "no warning given yet"}.`,
     qZ: "This target is a zombie (hostile infected).", qH: "This target is a living human survivor.",
     v1Crit: c => `Shoot ${c.id}: ${c.desc} (${Math.round(c.distance)} m, ${Math.round(chanceTouche(c.distance) * 100)} % chance to hit)`,
     v1Wait: "Don't shoot now (human target, too far or too uncertain)",
@@ -51,7 +52,8 @@ export const TXT = {
 };
 
 let LANG = "fr";
-try { LANG = localStorage.getItem("lang") || (navigator.language?.startsWith("fr") ? "fr" : "en"); } catch {}
+if (typeof window !== "undefined")   // navigateur seulement (le module est aussi chargé en Node pour le benchmark)
+  try { LANG = localStorage.getItem("lang") || (navigator.language?.startsWith("fr") ? "fr" : "en"); } catch {}
 export const langue = () => LANG;
 export const tr = () => TXT[LANG];
 

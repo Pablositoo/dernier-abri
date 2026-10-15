@@ -2,6 +2,7 @@
 import { PAUSE_ERREUR_MS, chanceTouche } from "../config.js";
 import { postJSON } from "../net.js";
 import { TXT } from "../ui/i18n.js";
+import { appliquerClassement, requeteClassement } from "./questions.js";
 
 export const etatJEV = { appels: 0, tokens: 0, lat: [], busy: false, probas: {}, choix: "—", err: "", generation: 0 };
 
@@ -21,32 +22,17 @@ export const analyseurJEV = {
   // ---- v2 : 2 questions Noul opposées par cible → p(zombie) et incohérence ----
   async classer(cibles, pistes, langue) {
     etatJEV.busy = true;
-    const gen = etatJEV.generation, t = TXT[langue], questions = {};
-    for (const c of cibles) {
-      pistes.get(c.id).besoinAnalyse = false;
-      const fiche = t.fiche(c, c.reaction);
-      // deux questions formulées en sens inverse : si JEV est cohérent, p(zombie) ≈ 1 - p(humain)
-      questions["z_" + c.id] = { type: "noul", instructions: `${fiche} ${t.qZ}` };
-      questions["h_" + c.id] = { type: "noul", instructions: `${fiche} ${t.qH}` };
-    }
-    const payload = { questions,   // le modèle JEV est figé côté serveur
-      state: { langue, contexte: t.contexte, cibles: cibles.map(c => ({ id: c.id, description: c.desc, distance_m: Math.round(c.distance), reaction_sommation: c.reaction })) } };
+    const gen = etatJEV.generation;
+    cibles.forEach(c => pistes.get(c.id).besoinAnalyse = false);
     try {
-      const r = await postJSON("/jev", payload);
+      const r = await postJSON("/jev", requeteClassement(cibles, langue));   // le modèle JEV est figé côté serveur
       if (gen !== etatJEV.generation) return;
       compter(r);
-      for (const c of cibles) {
-        const piste = pistes.get(c.id);
-        if (!piste) continue;                                   // cible sortie du jeu entre-temps
-        const z = r.answers["z_" + c.id]?.noul, h = r.answers["h_" + c.id]?.noul;
-        if (z == null || h == null) { piste.besoinAnalyse = true; continue; }
-        piste.pZ = (z + (1 - h)) / 2; piste.incoh = Math.abs(z - (1 - h)); piste.lectures++;
-        if (c.reaction) piste.lueAvecReaction = true; else piste.pAvant = piste.pZ;   // ce que JEV a VRAIMENT lu
-      }
+      appliquerClassement(cibles, pistes, r.answers);
     } catch (e) {
       if (gen !== etatJEV.generation) return;
       cibles.forEach(c => { const p = pistes.get(c.id); if (p) p.besoinAnalyse = true; });
-      etatJEV.err = t.err + e.message; await pause(PAUSE_ERREUR_MS);
+      etatJEV.err = TXT[langue].err + e.message; await pause(PAUSE_ERREUR_MS);
     } finally { if (gen === etatJEV.generation) etatJEV.busy = false; }
   },
 

@@ -40,13 +40,14 @@ function protocole(p, tous, vis, analyseur, langue) {
 
 /**
  * Avance la partie d'un pas de temps simulé.
- * analyseur : null (pas de JEV) ou { occupe, classer(liste, pistes, langue), choisir(partie, liste, langue) }
+ * analyseur : null (pas de JEV) ou { occupe, classer(liste, pistes, langue), choisir(partie, liste, langue), tic?(t) }
  * → liste des événements du pas (pour le rendu, le HUD et le journal)
  */
 export function pasPartie(p, dt, { analyseur = null, langue = "fr" } = {}) {
   const m = p.monde, sortie = [];
   m.pas(dt);
   recolter(p, sortie);
+  analyseur?.tic?.(m.t);                                  // headless : livre les réponses dont la latence simulée est écoulée
   if (p.cibleId && !m.vivante(p.cibleId)) p.cibleId = null;
 
   const tous = observerTous(m, langue), vis = visibles(tous);

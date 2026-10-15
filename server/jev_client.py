@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
+from .cache_jev import CacheJEV
 from .faux_jev import jev_simule
 
 API = "https://api.typesafe.ai/v1/systemone"
@@ -132,25 +133,38 @@ class ClientJEV:
     journal: JournalAppels
     modele: str = MODELE_JEV
     ouvrir: Callable = urllib.request.urlopen
+    cache: CacheJEV | None = None
 
     def traiter(self, body: dict) -> tuple[int, dict]:
-        """Requête du navigateur → (code HTTP, réponse JSON)."""
+        """Requête du navigateur → (code HTTP, réponse JSON). Seules les questions absentes du cache partent vers JEV."""
         try:
             payload = preparer_payload(body, self.modele)
         except ValueError as e:
             return 400, {"error": "requête invalide", "detail": str(e)}
         if not self.fake and not self.cle:
             return 503, {"error": "pas de clé"}
+        t0 = time.perf_counter()
+        trouvees, manquantes, servi = self.cache.chercher(payload) if self.cache else ({}, payload["questions"], None)
+        if not manquantes:                                   # tout est en cache : 0 appel, 0 token
+            self.journal.ecrire(modele_demande=payload["model"], modele_servi=servi, questions=len(trouvees),
+                                cache=len(trouvees), tokens=0, latence_ms=0, statut="cache", appels_session=self.budget.appels)
+            return 200, {"model": servi, "answers": trouvees, "usage": {"input_tokens": 0}, "cache": len(trouvees),
+                         "latence_ms": round((time.perf_counter() - t0) * 1000)}
         if (raison := self.budget.reserver()) is not None:
             print(f"⛔ budget JEV : {raison}")
             return 429, {"error": "budget", "detail": raison}
-        t0 = time.perf_counter()
-        rep = jev_simule(payload) if self.fake else appeler(payload, self.cle, ouvrir=self.ouvrir)
+        envoi = {**payload, "questions": manquantes}
+        rep = jev_simule(envoi) if self.fake else appeler(envoi, self.cle, ouvrir=self.ouvrir)
         latence = round((time.perf_counter() - t0) * 1000)
         tokens = (rep.get("usage") or {}).get("input_tokens") or 0
         self.budget.compter_tokens(int(tokens))
+        if self.cache and "error" not in rep:
+            self.cache.ranger(envoi, rep)
         self.journal.ecrire(modele_demande=payload["model"], modele_servi=rep.get("model"),
-                            questions=len(payload["questions"]), tokens=tokens, latence_ms=latence,
+                            questions=len(manquantes), cache=len(trouvees), tokens=tokens, latence_ms=latence,
                             statut=rep.get("error", "ok"), appels_session=self.budget.appels)
+        if "error" not in rep:
+            rep["answers"] = {**trouvees, **(rep.get("answers") or {})}
+            rep["cache"] = len(trouvees)
         rep["latence_ms"] = latence
         return (502 if "error" in rep else 200), rep

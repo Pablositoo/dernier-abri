@@ -73,14 +73,26 @@ python3 -m unittest discover tests          # proxy (phase 0) ; policy, fusion �
 node --test tests/js/                       # modules JS purs (rng, policy, simulation headless)
 
 # Benchmark headless (phase 2) — critère d'acceptation de toute politique
-python3 -m tests.bench --games 500 --seed 1 --jev cache
+python3 -m server.remplir_cache --dry-run   # puis sans --dry-run : ≈ 8 vrais appels, une fois par version de JEV
+node tests/bench.mjs --parties 500 --graine 1 --jev cache --langue en   # vraies réponses JEV rejouées (cache_jev.json)
+node tests/bench.mjs --parties 500 --jev fake                          # faux JEV (optimiste), sans cache
 ```
+Cache JEV : `cache_jev.json` (ignoré par git), clé = sha256(modèle + state + question), identique en Python (`server/cache_jev.py`) et en JS (`tests/bench_lib.mjs`). Les questions ne contiennent ni id ni distance, et `state` = {langue, contexte} : même fiche ⇒ même question ⇒ 80 questions possibles en tout.
+
+**Base de référence v2.2** (500 parties, graines 1–500, `--jev cache`, jev-1.13.0, latence 0,25 s) :
+
+| Langue | Humains abattus | Morsures/partie | dont zombies blessés | Score moyen | Précision |
+|---|---|---|---|---|---|
+| EN | 0 | 4,31 ± 0,20 | 2,76 ± 0,14 | 758 | 63 % |
+| FR | 0 | 1,07 ± 0,12 | 0,09 ± 0,03 | 871 | 61 % |
+
+Cause des morsures EN : « limping, bloodied, doesn't respond when called » finit à p = 0,835 < 0,85 même après la réaction.
 **Critères d'acceptation** (benchmark, 500 parties) : humains abattus = 0 ; morsures moyennes en baisse par rapport à la base v2.2 ; aucune régression de latence.
 
 ## Feuille de route (état)
 - [x] 0. Sécuriser le proxy (CSRF/Origin, budget, CSV, taille, timeouts client)
 - [x] 1. Modulariser `index.html` + RNG seedé + horloge simulée
-- [ ] 2. Cache JEV + simulateur headless + benchmark
+- [x] 2. Cache JEV + simulateur headless + benchmark
 - [ ] 3. Fusion bayésienne + SPRT + analyseur cinématique + 2ᵉ sommation
 - [ ] 4. Politique par coût + ordonnancement + vérification de la ligne de tir au moment du tir
 - [ ] 5. Calibration (fiabilité, isotonique, dérive)
