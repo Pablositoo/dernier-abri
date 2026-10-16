@@ -1,12 +1,14 @@
 # Dernier Abri / Last Shelter
 
+**Propulsé par [JEV](#le-rôle-de-jev), le modèle de décision de TypeSafe AI.**
+
 **Une IA classe, le code décide.** Jeu 3D de défense où un modèle d'IA (JEV, TypeSafe AI) estime, à partir d'une simple description textuelle, si une silhouette dans la nuit est un zombie ou un survivant, et où un code déterministe, testé et auditable décide de tirer… ou pas.
 
-> *An AI classifies, deterministic code decides. A 3D browser game used as a test bench for decision-making under uncertainty: Bayesian evidence fusion, Wald's sequential test, calibration, drift detection, and a reusable "observe → analyse → decide → respond" core. Zero humans shot across thousands of simulated games.*
+> *Powered by JEV (TypeSafe AI). An AI classifies, deterministic code decides. A 3D browser game used as a test bench for decision-making under uncertainty: Bayesian evidence fusion, Wald's sequential test, calibration, drift detection, and a reusable "observe → analyse → decide → respond" core. Zero humans shot across thousands of simulated games.*
 
 ![Capture du jeu : sommation, cerveau JEV et décisions justifiées](docs/capture_jeu.png)
 
-Projet du cours **Coding for AI** (L3 Data Science & IA, aivancity).
+Projet du cours **Coding for AI** (L3 Data Science & IA, aivancity), construit autour de **JEV** : c'est JEV qui lit chaque silhouette et donne la probabilité sur laquelle tout le système de décision s'appuie.
 
 ---
 
@@ -112,7 +114,7 @@ tests/       tests Python et JS, simulateur headless, benchmark
 
 ## Crédits
 
-- Modèle **JEV** : TypeSafe AI (accès fourni dans le cadre du cours).
+- **JEV, TypeSafe AI** : le cœur du projet. Toute la classification des silhouettes repose sur ses réponses ; sans JEV, ni la fusion des preuves, ni la calibration, ni les résultats ci-dessus n'existeraient. Accès fourni dans le cadre du cours.
 - Rendu 3D : [Three.js](https://threejs.org).
 - Cours *Coding for AI*, aivancity.
 

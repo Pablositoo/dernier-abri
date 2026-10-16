@@ -1,0 +1,2 @@
+# Le notebook (avec ses images) ne doit pas fausser le langage principal affiché par GitHub
+*.ipynb linguist-documentation
